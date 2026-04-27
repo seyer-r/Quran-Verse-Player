@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Quran Listener"
+version = "1.0.0"
+id = "artifacts/quran-listener"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20245
+
+[services.development]
+run = "pnpm --filter @workspace/quran-listener run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/quran-listener", "run", "build" ]
+publicDir = "artifacts/quran-listener/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20245"
+BASE_PATH = "/"

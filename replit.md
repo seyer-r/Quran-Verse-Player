@@ -25,3 +25,8 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## Artifacts
+
+- **quran-listener** (`/`) — React + Vite. Plays Surah Al-Fatiha ayah-by-ayah (Mishary Rashid Alafasy) with the Arabic text shown in the middle of a black screen. Audio streamed from the `cdn.islamic.network` Quran CDN. No backend; surah data lives in `src/data/al-fatiha.ts`. Main UI in `src/pages/player.tsx`.
+
