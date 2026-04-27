@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Play, Pause, SkipBack, SkipForward, RotateCcw } from "lucide-react";
 import {
   ayahs,
@@ -14,7 +15,6 @@ export default function Player() {
   const [progress, setProgress] = useState(0);
   const [hasFinished, setHasFinished] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [textKey, setTextKey] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const currentAyah = ayahs[index];
@@ -25,7 +25,6 @@ export default function Player() {
     audio.src = currentAyah.audioUrl;
     audio.load();
     setProgress(0);
-    setTextKey((k) => k + 1);
     if (isPlaying) {
       setIsLoading(true);
       audio.play().catch(() => {
@@ -119,7 +118,7 @@ export default function Player() {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-black text-white">
+    <div className="relative min-h-[100svh] w-full overflow-hidden bg-black text-white">
       <audio ref={audioRef} preload="auto" />
 
       {/* Subtle radial glow behind the text */}
@@ -132,7 +131,7 @@ export default function Player() {
       />
 
       {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-6 pt-6 sm:px-10 sm:pt-8">
+      <header className="relative z-10 flex items-center justify-between px-6 pt-[max(env(safe-area-inset-top),1.5rem)] sm:px-10">
         <div>
           <p className="text-[10px] uppercase tracking-[0.3em] text-neutral-500">
             Surah 1
@@ -153,34 +152,52 @@ export default function Player() {
       </header>
 
       {/* Main ayah display */}
-      <main className="relative z-10 flex min-h-[calc(100vh-180px)] items-center justify-center px-6 sm:px-12">
-        <div
-          key={textKey}
-          className="ayah-fade mx-auto max-w-5xl text-center"
-        >
+      <main className="relative z-10 flex min-h-[calc(100svh-200px)] items-center justify-center px-6 sm:px-12">
+        <div className="relative mx-auto w-full max-w-5xl text-center">
+          {/* Ayah counter — stable, doesn't animate with verse */}
           <p className="mb-10 text-xs uppercase tracking-[0.45em] text-neutral-500">
             Ayah {currentAyah.number} of {ayahs.length}
           </p>
-          <p
-            dir="rtl"
-            lang="ar"
-            className="text-4xl leading-[1.9] text-white sm:text-5xl md:text-6xl lg:text-7xl"
-            style={{
-              fontFamily: "'Amiri Quran', 'Amiri', 'Scheherazade New', serif",
-              fontWeight: 400,
-              textShadow: "0 0 40px rgba(255, 220, 160, 0.15)",
-            }}
-          >
-            {currentAyah.arabic}
-          </p>
-          <p className="mx-auto mt-12 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base">
-            {currentAyah.translation}
-          </p>
+
+          {/* Crossfading Arabic + translation block */}
+          <div className="relative">
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.div
+                key={currentAyah.number}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{
+                  opacity: {
+                    duration: 1.2,
+                    ease: [0.4, 0.0, 0.2, 1],
+                  },
+                }}
+              >
+                <p
+                  dir="rtl"
+                  lang="ar"
+                  className="text-4xl leading-[1.9] text-white sm:text-5xl md:text-6xl lg:text-7xl"
+                  style={{
+                    fontFamily:
+                      "'Amiri Quran', 'Amiri', 'Scheherazade New', serif",
+                    fontWeight: 400,
+                    textShadow: "0 0 40px rgba(255, 220, 160, 0.15)",
+                  }}
+                >
+                  {currentAyah.arabic}
+                </p>
+                <p className="mx-auto mt-12 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base">
+                  {currentAyah.translation}
+                </p>
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
       </main>
 
       {/* Footer / controls */}
-      <footer className="absolute inset-x-0 bottom-0 z-10 px-6 pb-8 sm:px-10 sm:pb-10">
+      <footer className="absolute inset-x-0 bottom-0 z-10 px-6 pb-[max(env(safe-area-inset-bottom),2rem)] sm:px-10">
         {/* Progress bar */}
         <div className="mx-auto mb-6 w-full max-w-3xl">
           <div className="flex gap-1.5">

@@ -1,0 +1,14 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "JAL3qnAycMj1GNoVCrYRI"
+uri = "file://attached_assets/generated_images/generated_image_0.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "CaWBfNYLlbagkXeVmyuie"
+uri = "file://attached_assets/generated_images/generated_image_1.png"
+type = "image"
+title = "generated_image"
