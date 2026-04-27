@@ -21,7 +21,7 @@ const toArabicIndic = (n: number): string => {
 // Arabic-Indic digits as the decorative rosette/ornament containing the
 // verse number, exactly as it appears in the printed Mushaf.
 export const ayahMarker = (n: number): string =>
-  `\u06DD${toArabicIndic(n)}`;
+  `\u00A0${toArabicIndic(n)}`;
 
 export const surahName = "Al-Fatiha";
 export const surahNameArabic = "الفاتحة";
