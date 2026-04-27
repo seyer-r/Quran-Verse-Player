@@ -143,7 +143,10 @@ export default function Player() {
         <div className="text-right">
           <p
             className="text-2xl text-neutral-200 sm:text-3xl"
-            style={{ fontFamily: "'Amiri Quran', 'Amiri', serif" }}
+            style={{
+              fontFamily:
+                "'KFGQPC Uthmanic Hafs', 'Amiri Quran', 'Amiri', serif",
+            }}
           >
             {surahNameArabic}
           </p>
@@ -188,7 +191,7 @@ export default function Player() {
                     className="text-4xl leading-[1.9] text-white sm:text-5xl md:text-6xl lg:text-7xl"
                     style={{
                       fontFamily:
-                        "'Amiri Quran', 'Amiri', 'Scheherazade New', serif",
+                        "'KFGQPC Uthmanic Hafs', 'Amiri Quran', 'Amiri', 'Scheherazade New', serif",
                       fontWeight: 400,
                       textShadow: "0 0 40px rgba(255, 220, 160, 0.15)",
                     }}
