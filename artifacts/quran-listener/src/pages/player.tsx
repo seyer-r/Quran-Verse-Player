@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { Play, Pause, SkipBack, SkipForward, RotateCcw } from "lucide-react";
 import {
   ayahs,
@@ -159,39 +158,49 @@ export default function Player() {
             Ayah {currentAyah.number} of {ayahs.length}
           </p>
 
-          {/* Crossfading Arabic + translation block */}
-          <div className="relative">
-            <AnimatePresence mode="popLayout" initial={false}>
-              <motion.div
-                key={currentAyah.number}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{
-                  opacity: {
-                    duration: 1.2,
-                    ease: [0.4, 0.0, 0.2, 1],
-                  },
-                }}
-              >
-                <p
-                  dir="rtl"
-                  lang="ar"
-                  className="text-4xl leading-[1.9] text-white sm:text-5xl md:text-6xl lg:text-7xl"
+          {/*
+            Crossfading Arabic + translation block.
+
+            All ayahs are always rendered in the same CSS grid cell, so:
+              - The container is sized to the LONGEST ayah (no vertical shift
+                between verses — the box never changes height).
+              - Switching ayahs is just an opacity toggle, so the outgoing
+                verse fades out at the same time the incoming one fades in
+                (true crossfade, no gap).
+          */}
+          <div className="grid place-items-center">
+            {ayahs.map((a, i) => {
+              const isActive = i === index;
+              return (
+                <div
+                  key={a.number}
+                  aria-hidden={!isActive}
+                  className="col-start-1 row-start-1 transition-opacity ease-in-out"
                   style={{
-                    fontFamily:
-                      "'Amiri Quran', 'Amiri', 'Scheherazade New', serif",
-                    fontWeight: 400,
-                    textShadow: "0 0 40px rgba(255, 220, 160, 0.15)",
+                    opacity: isActive ? 1 : 0,
+                    transitionDuration: "1100ms",
+                    pointerEvents: isActive ? "auto" : "none",
                   }}
                 >
-                  {currentAyah.arabic}
-                </p>
-                <p className="mx-auto mt-12 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base">
-                  {currentAyah.translation}
-                </p>
-              </motion.div>
-            </AnimatePresence>
+                  <p
+                    dir="rtl"
+                    lang="ar"
+                    className="text-4xl leading-[1.9] text-white sm:text-5xl md:text-6xl lg:text-7xl"
+                    style={{
+                      fontFamily:
+                        "'Amiri Quran', 'Amiri', 'Scheherazade New', serif",
+                      fontWeight: 400,
+                      textShadow: "0 0 40px rgba(255, 220, 160, 0.15)",
+                    }}
+                  >
+                    {a.arabic}
+                  </p>
+                  <p className="mx-auto mt-12 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base">
+                    {a.translation}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </div>
       </main>
