@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Play, Pause, SkipBack, SkipForward, RotateCcw } from "lucide-react";
 import {
+  ayahMarker,
   ayahs,
   reciter,
   surahMeaning,
@@ -194,9 +195,21 @@ export default function Player() {
                         "'KFGQPC Uthmanic Hafs', 'Amiri Quran', 'Amiri', 'Scheherazade New', serif",
                       fontWeight: 400,
                       textShadow: "0 0 40px rgba(255, 220, 160, 0.15)",
+                      fontFeatureSettings:
+                        "'liga' 1, 'rlig' 1, 'calt' 1, 'dlig' 1, 'ccmp' 1",
+                      fontVariantLigatures: "contextual",
                     }}
                   >
                     {a.arabic}
+                    <span
+                      style={{
+                        fontFamily:
+                          "'Amiri Quran', 'Amiri', 'KFGQPC Uthmanic Hafs', serif",
+                        marginInlineStart: "0.35em",
+                      }}
+                    >
+                      {ayahMarker(a.number)}
+                    </span>
                   </p>
                   <p className="mx-auto mt-12 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base">
                     {a.translation}

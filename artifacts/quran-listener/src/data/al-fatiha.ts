@@ -8,6 +8,21 @@ export interface Ayah {
 const audio = (n: number) =>
   `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${n}.mp3`;
 
+// Convert a Western digit number into Arabic-Indic digits (e.g. 12 -> ١٢)
+const toArabicIndic = (n: number): string => {
+  const digits = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+  return String(n)
+    .split("")
+    .map((d) => digits[Number(d)])
+    .join("");
+};
+
+// U+06DD ARABIC END OF AYAH — the KFGQPC font renders this followed by
+// Arabic-Indic digits as the decorative rosette/ornament containing the
+// verse number, exactly as it appears in the printed Mushaf.
+export const ayahMarker = (n: number): string =>
+  `\u06DD${toArabicIndic(n)}`;
+
 export const surahName = "Al-Fatiha";
 export const surahNameArabic = "الفاتحة";
 export const surahMeaning = "The Opening";
