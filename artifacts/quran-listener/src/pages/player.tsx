@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Play, Pause, SkipBack, SkipForward, RotateCcw } from "lucide-react";
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  RotateCcw,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import {
   ayahMarker,
   ayahs,
@@ -8,14 +15,27 @@ import {
   surahName,
   surahNameArabic,
 } from "@/data/al-fatiha";
+import { SettingsPanel } from "@/components/SettingsPanel";
+import { useSettings } from "@/lib/useSettings";
+import { getTransition } from "@/lib/transitions";
 
 export default function Player() {
   const [index, setIndex] = useState(0);
+  // displayedIndex lags `index` while a "through black" transition runs:
+  // we hold the old verse on screen until it has fully faded out, then
+  // swap to the new one and fade back in.
+  const [displayedIndex, setDisplayedIndex] = useState(0);
+  const [stageOpacity, setStageOpacity] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [hasFinished, setHasFinished] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const transitionTimers = useRef<number[]>([]);
+
+  const { settings, setTransition } = useSettings();
+  const transition = getTransition(settings.transition);
 
   const currentAyah = ayahs[index];
 
@@ -33,6 +53,37 @@ export default function Player() {
       });
     }
   }, [index]);
+
+  // Drive the visual transition between verses based on the chosen mode.
+  useEffect(() => {
+    // Cancel any in-flight transition timers from a prior change.
+    transitionTimers.current.forEach((id) => window.clearTimeout(id));
+    transitionTimers.current = [];
+
+    if (transition.throughBlack) {
+      // Phase 1: fade the current verse to black.
+      setStageOpacity(0);
+      const half = transition.duration / 2;
+      // Phase 2: once black, swap to the new verse, then fade back in.
+      const swap = window.setTimeout(() => {
+        setDisplayedIndex(index);
+        // Force a paint at opacity 0 with the new verse before fading in.
+        const reveal = window.setTimeout(() => setStageOpacity(1), 30);
+        transitionTimers.current.push(reveal);
+      }, half);
+      transitionTimers.current.push(swap);
+    } else {
+      // Crossfade modes (incl. instant): both old & new verses are
+      // mounted, opacity-toggled by isActive. Just sync the stage.
+      setStageOpacity(1);
+      setDisplayedIndex(index);
+    }
+
+    return () => {
+      transitionTimers.current.forEach((id) => window.clearTimeout(id));
+      transitionTimers.current = [];
+    };
+  }, [index, transition.id, transition.duration, transition.throughBlack]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -141,7 +192,15 @@ export default function Player() {
             <span className="text-neutral-500">— {surahMeaning}</span>
           </h1>
         </div>
-        <div className="text-right">
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Settings"
+            className="rounded-full p-2 text-neutral-400 transition hover:bg-white/5 hover:text-white"
+          >
+            <SettingsIcon className="h-5 w-5" />
+          </button>
           <p
             className="text-2xl text-neutral-200 sm:text-3xl"
             style={{
@@ -172,9 +231,24 @@ export default function Player() {
                 verse fades out at the same time the incoming one fades in
                 (true crossfade, no gap).
           */}
-          <div className="grid place-items-center">
+          <div
+            className="grid place-items-center transition-opacity ease-in-out"
+            style={{
+              opacity: stageOpacity,
+              transitionDuration: transition.throughBlack
+                ? `${transition.duration / 2}ms`
+                : "0ms",
+            }}
+          >
             {ayahs.map((a, i) => {
-              const isActive = i === index;
+              const isActive = i === displayedIndex;
+              // For "through black" mode, only one verse is visible at a
+              // time anyway (stage opacity goes to 0 between swaps), so we
+              // still rely on the same opacity toggle but with a shorter
+              // per-verse transition since the stage handles the fade.
+              const perVerseDuration = transition.throughBlack
+                ? 0
+                : transition.duration;
               return (
                 <div
                   key={a.number}
@@ -182,7 +256,7 @@ export default function Player() {
                   className="col-start-1 row-start-1 transition-opacity ease-in-out"
                   style={{
                     opacity: isActive ? 1 : 0,
-                    transitionDuration: "1100ms",
+                    transitionDuration: `${perVerseDuration}ms`,
                     pointerEvents: isActive ? "auto" : "none",
                   }}
                 >
@@ -295,6 +369,13 @@ export default function Player() {
           </div>
         </div>
       </footer>
+
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        transition={settings.transition}
+        onTransitionChange={setTransition}
+      />
     </div>
   );
 }
