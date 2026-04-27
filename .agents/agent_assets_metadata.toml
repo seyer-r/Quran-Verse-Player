@@ -12,3 +12,9 @@ id = "CaWBfNYLlbagkXeVmyuie"
 uri = "file://attached_assets/generated_images/generated_image_1.png"
 type = "image"
 title = "generated_image"
+
+[[generated]]
+id = "nfSUsfBYTj8FFn05gFKPC"
+uri = "file://artifacts/quran-listener/assets/images/icon.png"
+type = "image"
+title = "quran app icon"
