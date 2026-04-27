@@ -201,15 +201,7 @@ export default function Player() {
                     }}
                   >
                     {a.arabic}
-                    <span
-                      style={{
-                        fontFamily:
-                          "'Amiri Quran', 'Amiri', 'KFGQPC Uthmanic Hafs', serif",
-                        marginInlineStart: "0.35em",
-                      }}
-                    >
-                      {ayahMarker(a.number)}
-                    </span>
+                    {ayahMarker(a.number)}
                   </p>
                   <p className="mx-auto mt-12 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base">
                     {a.translation}
