@@ -18,6 +18,7 @@ import {
   Animated,
   Easing,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -69,14 +70,89 @@ export default function PlayerScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // Auto-hide UI chrome (header, ayah counter, footer controls) — like a
+  // video player. Tap anywhere to toggle. Only auto-hides while playing.
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const chromeOpacity = useRef(new Animated.Value(1)).current;
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const HIDE_DELAY_MS = 3500;
+
   const indexRef = useRef(index);
   const isPlayingRef = useRef(isPlaying);
+  const settingsOpenRef = useRef(settingsOpen);
   useEffect(() => {
     indexRef.current = index;
   }, [index]);
   useEffect(() => {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
+  useEffect(() => {
+    settingsOpenRef.current = settingsOpen;
+  }, [settingsOpen]);
+
+  const clearHideTimer = useCallback(() => {
+    if (hideTimer.current) {
+      clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  }, []);
+
+  const scheduleHide = useCallback(() => {
+    clearHideTimer();
+    // Don't auto-hide while paused, finished, or while settings is open.
+    if (!isPlayingRef.current) return;
+    if (settingsOpenRef.current) return;
+    hideTimer.current = setTimeout(() => {
+      setChromeVisible(false);
+    }, HIDE_DELAY_MS);
+  }, [clearHideTimer]);
+
+  // Reset the hide timer whenever the user touches a control (keeps the
+  // chrome visible during interactions instead of fading mid-tap).
+  const pokeControls = useCallback(() => {
+    setChromeVisible(true);
+    scheduleHide();
+  }, [scheduleHide]);
+
+  // Tap on the verse area toggles chrome on/off.
+  const toggleChrome = useCallback(() => {
+    setChromeVisible((v) => !v);
+  }, []);
+
+  // Animate chrome opacity to match visibility.
+  useEffect(() => {
+    Animated.timing(chromeOpacity, {
+      toValue: chromeVisible ? 1 : 0,
+      duration: 280,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+    if (chromeVisible) scheduleHide();
+    else clearHideTimer();
+  }, [chromeVisible, chromeOpacity, scheduleHide, clearHideTimer]);
+
+  // When playback transitions: starting playback schedules a hide,
+  // pausing or finishing keeps chrome visible (and cancels the timer).
+  useEffect(() => {
+    if (isPlaying) {
+      scheduleHide();
+    } else {
+      clearHideTimer();
+      setChromeVisible(true);
+    }
+  }, [isPlaying, scheduleHide, clearHideTimer]);
+
+  // While settings is open, keep chrome visible and don't auto-hide.
+  useEffect(() => {
+    if (settingsOpen) {
+      clearHideTimer();
+      setChromeVisible(true);
+    } else {
+      scheduleHide();
+    }
+  }, [settingsOpen, scheduleHide, clearHideTimer]);
+
+  useEffect(() => () => clearHideTimer(), [clearHideTimer]);
 
   // === Recitation players — ONE per ayah ===
   // Using one persistent AudioPlayer per ayah (instead of a single player +
@@ -363,6 +439,7 @@ export default function PlayerScreen() {
   }, []);
 
   const togglePlay = useCallback(() => {
+    pokeControls();
     if (hasFinished) {
       // Restart from the beginning.
       setHasFinished(false);
@@ -386,9 +463,10 @@ export default function PlayerScreen() {
       safePlay(player);
       setIsPlaying(true);
     }
-  }, [hasFinished, getPlayer]);
+  }, [hasFinished, getPlayer, pokeControls]);
 
   const goPrev = useCallback(() => {
+    pokeControls();
     const cur = indexRef.current;
     if (cur > 0) {
       setHasFinished(false);
@@ -406,9 +484,10 @@ export default function PlayerScreen() {
       const player = getPlayer(0);
       safeSeekZero(player);
     }
-  }, [getPlayer]);
+  }, [getPlayer, pokeControls]);
 
   const goNext = useCallback(() => {
+    pokeControls();
     const cur = indexRef.current;
     if (cur < ayahs.length - 1) {
       setHasFinished(false);
@@ -423,9 +502,10 @@ export default function PlayerScreen() {
       if (wasPlaying) safePlay(next);
       setIndex(cur + 1);
     }
-  }, [getPlayer]);
+  }, [getPlayer, pokeControls]);
 
   const restart = useCallback(() => {
+    pokeControls();
     setHasFinished(false);
     const cur = indexRef.current;
     // Pause whatever is currently active.
@@ -446,7 +526,7 @@ export default function PlayerScreen() {
     setIndex(0);
     setIsPlaying(true);
     setProgress(0);
-  }, [getPlayer]);
+  }, [getPlayer, pokeControls]);
 
   // Responsive Arabic font size — Mushaf-quality at every breakpoint.
   const arabicFontSize = useMemo(() => {
@@ -508,156 +588,192 @@ export default function PlayerScreen() {
         )}
       </Animated.View>
 
-      {/* === Header === */}
-      <View style={[styles.header, { paddingTop: topPad }]}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.eyebrow}>SURAH 1</Text>
-          <Text style={styles.surahLabel}>
-            {surahName}{" "}
-            <Text style={styles.surahMeaning}>— {surahMeaning}</Text>
+      {/* === Tap-to-toggle layer wraps the chrome + stage === */}
+      <Pressable
+        style={styles.pressArea}
+        onPress={toggleChrome}
+        android_disableSound
+      >
+        {/* === Header === */}
+        <Animated.View
+          style={[
+            styles.header,
+            { paddingTop: topPad, opacity: chromeOpacity },
+          ]}
+          pointerEvents={chromeVisible ? "auto" : "none"}
+        >
+          <View style={styles.headerLeft}>
+            <Text style={styles.eyebrow}>SURAH 1</Text>
+            <Text style={styles.surahLabel}>
+              {surahName}{" "}
+              <Text style={styles.surahMeaning}>— {surahMeaning}</Text>
+            </Text>
+          </View>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={() => {
+                pokeControls();
+                setSettingsOpen(true);
+              }}
+              accessibilityLabel="Settings"
+              hitSlop={10}
+              style={styles.iconBtn}
+              activeOpacity={0.7}
+            >
+              <Feather name="settings" size={20} color="#d4d4d4" />
+            </TouchableOpacity>
+            <Text style={styles.surahArabic}>{surahNameArabic}</Text>
+          </View>
+        </Animated.View>
+
+        {/* === Ayah counter === */}
+        <Animated.View
+          style={[styles.counterWrap, { opacity: chromeOpacity }]}
+          pointerEvents="none"
+        >
+          <Text style={styles.counter}>
+            AYAH {ayahs[index].number} OF {ayahs.length}
           </Text>
-        </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            onPress={() => setSettingsOpen(true)}
-            accessibilityLabel="Settings"
-            hitSlop={10}
-            style={styles.iconBtn}
-            activeOpacity={0.7}
-          >
-            <Feather name="settings" size={20} color="#d4d4d4" />
-          </TouchableOpacity>
-          <Text style={styles.surahArabic}>{surahNameArabic}</Text>
-        </View>
-      </View>
+        </Animated.View>
 
-      {/* === Ayah counter === */}
-      <View style={styles.counterWrap}>
-        <Text style={styles.counter}>
-          AYAH {ayahs[index].number} OF {ayahs.length}
-        </Text>
-      </View>
-
-      {/* === Stage — verses stacked & opacity-toggled === */}
-      <Animated.View style={[styles.stage, { opacity: stageOpacity }]}>
-        {ayahs.map((a, i) => (
-          <Animated.View
-            key={a.number}
-            pointerEvents={i === displayedIndex ? "auto" : "none"}
-            style={[
-              StyleSheet.absoluteFill,
-              styles.verseBox,
-              { opacity: verseOpacities[i] },
-            ]}
-          >
-            <Text
+        {/* === Stage — verses stacked & opacity-toggled. Verses are
+            non-interactive so taps fall through to the parent Pressable. === */}
+        <Animated.View
+          style={[styles.stage, { opacity: stageOpacity }]}
+          pointerEvents="box-none"
+        >
+          {ayahs.map((a, i) => (
+            <Animated.View
+              key={a.number}
+              pointerEvents="none"
               style={[
-                styles.arabic,
-                {
-                  fontSize: arabicFontSize,
-                  lineHeight: arabicFontSize * 1.9,
-                },
+                StyleSheet.absoluteFill,
+                styles.verseBox,
+                { opacity: verseOpacities[i] },
               ]}
-              allowFontScaling={false}
             >
-              {a.arabic}
-              {ayahMarker(a.number)}
-            </Text>
-            <Text
-              style={[styles.translation, { fontSize: translationFontSize }]}
-            >
-              {a.translation}
-            </Text>
-          </Animated.View>
-        ))}
-      </Animated.View>
+              <Text
+                style={[
+                  styles.arabic,
+                  {
+                    fontSize: arabicFontSize,
+                    lineHeight: arabicFontSize * 1.9,
+                  },
+                ]}
+                allowFontScaling={false}
+              >
+                {a.arabic}
+                {ayahMarker(a.number)}
+              </Text>
+              <Text
+                style={[
+                  styles.translation,
+                  { fontSize: translationFontSize },
+                ]}
+              >
+                {a.translation}
+              </Text>
+            </Animated.View>
+          ))}
+        </Animated.View>
 
-      {/* === Footer / controls === */}
-      <View style={[styles.footer, { paddingBottom: bottomPad }]}>
-        <View style={styles.progressRow}>
-          {ayahs.map((a, i) => {
-            const fill = i < index ? 100 : i === index ? progress : 0;
-            return (
-              <View key={a.number} style={styles.progressTrack}>
-                <View
-                  style={[styles.progressFill, { width: `${fill}%` }]}
+        {/* === Footer / controls === */}
+        <Animated.View
+          style={[
+            styles.footer,
+            { paddingBottom: bottomPad, opacity: chromeOpacity },
+          ]}
+          pointerEvents={chromeVisible ? "auto" : "none"}
+        >
+          <View style={styles.progressRow}>
+            {ayahs.map((a, i) => {
+              const fill = i < index ? 100 : i === index ? progress : 0;
+              return (
+                <View key={a.number} style={styles.progressTrack}>
+                  <View
+                    style={[styles.progressFill, { width: `${fill}%` }]}
+                  />
+                </View>
+              );
+            })}
+          </View>
+
+          <View style={styles.controlsRow}>
+            <View style={styles.reciterCol}>
+              <Text style={styles.reciterEyebrow}>RECITER</Text>
+              <Text style={styles.reciterName} numberOfLines={1}>
+                {reciter}
+              </Text>
+            </View>
+
+            <View style={styles.controlsCenter}>
+              <TouchableOpacity
+                onPress={goPrev}
+                accessibilityLabel="Previous ayah"
+                disabled={index === 0 && progress < 1}
+                hitSlop={10}
+                style={styles.iconBtn}
+                activeOpacity={0.7}
+              >
+                <Feather
+                  name="skip-back"
+                  size={22}
+                  color={
+                    index === 0 && progress < 1 ? "#3a3a3a" : "#d4d4d4"
+                  }
                 />
-              </View>
-            );
-          })}
-        </View>
+              </TouchableOpacity>
 
-        <View style={styles.controlsRow}>
-          <View style={styles.reciterCol}>
-            <Text style={styles.reciterEyebrow}>RECITER</Text>
-            <Text style={styles.reciterName} numberOfLines={1}>
-              {reciter}
-            </Text>
+              <TouchableOpacity
+                onPress={togglePlay}
+                accessibilityLabel={isPlaying ? "Pause" : "Play"}
+                activeOpacity={0.85}
+                style={styles.playBtn}
+              >
+                <Feather
+                  name={
+                    hasFinished ? "rotate-ccw" : isPlaying ? "pause" : "play"
+                  }
+                  size={26}
+                  color="#000"
+                  style={
+                    !hasFinished && !isPlaying
+                      ? { marginLeft: 2 }
+                      : undefined
+                  }
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={goNext}
+                accessibilityLabel="Next ayah"
+                disabled={index === ayahs.length - 1}
+                hitSlop={10}
+                style={styles.iconBtn}
+                activeOpacity={0.7}
+              >
+                <Feather
+                  name="skip-forward"
+                  size={22}
+                  color={
+                    index === ayahs.length - 1 ? "#3a3a3a" : "#d4d4d4"
+                  }
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.restartCol}>
+              <TouchableOpacity
+                onPress={restart}
+                hitSlop={8}
+                activeOpacity={0.6}
+              >
+                <Text style={styles.restartText}>RESTART</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-
-          <View style={styles.controlsCenter}>
-            <TouchableOpacity
-              onPress={goPrev}
-              accessibilityLabel="Previous ayah"
-              disabled={index === 0 && progress < 1}
-              hitSlop={10}
-              style={styles.iconBtn}
-              activeOpacity={0.7}
-            >
-              <Feather
-                name="skip-back"
-                size={22}
-                color={
-                  index === 0 && progress < 1 ? "#3a3a3a" : "#d4d4d4"
-                }
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={togglePlay}
-              accessibilityLabel={isPlaying ? "Pause" : "Play"}
-              activeOpacity={0.85}
-              style={styles.playBtn}
-            >
-              <Feather
-                name={
-                  hasFinished ? "rotate-ccw" : isPlaying ? "pause" : "play"
-                }
-                size={26}
-                color="#000"
-                style={
-                  !hasFinished && !isPlaying ? { marginLeft: 2 } : undefined
-                }
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={goNext}
-              accessibilityLabel="Next ayah"
-              disabled={index === ayahs.length - 1}
-              hitSlop={10}
-              style={styles.iconBtn}
-              activeOpacity={0.7}
-            >
-              <Feather
-                name="skip-forward"
-                size={22}
-                color={index === ayahs.length - 1 ? "#3a3a3a" : "#d4d4d4"}
-              />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.restartCol}>
-            <TouchableOpacity
-              onPress={restart}
-              hitSlop={8}
-              activeOpacity={0.6}
-            >
-              <Text style={styles.restartText}>RESTART</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
+        </Animated.View>
+      </Pressable>
 
       {isLoading && isPlaying && (
         <View style={styles.loadingPulse} pointerEvents="none" />
@@ -683,6 +799,10 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: "#000",
+  },
+  pressArea: {
+    flex: 1,
+    flexDirection: "column",
   },
   warmGlow: {
     backgroundColor: "transparent",
