@@ -47,6 +47,18 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 ### Layout — no shift between ayahs
 Verses are stacked in the same place, opacity-toggled rather than mounted/unmounted. To stay efficient on long surahs (Al-Baqarah has 286 ayahs), only the current and previously-displayed ayah views are actually mounted; the others are skipped in render.
 
+### Long-ayah handling
+The longest ayah in the Quran (Al-Baqarah 282, ~1500 Arabic chars) cannot fit on any phone screen. Two-part fix in `app/index.tsx`:
+1. **Adaptive font size** (`computeArabicFontSize`) — base font is scaled down by tier when the Arabic char length crosses 120 / 250 / 500 / 1000 chars, with a 22 px floor.
+2. **Per-verse `ScrollView`** wraps each rendered ayah. `contentContainerStyle` uses `flexGrow:1, justifyContent:'center'` so short ayahs stay centered exactly as before, and `scrollEnabled` is only true when the combined char length > 400 — short ayahs keep the existing tap-to-toggle gesture on the verse area.
+Line-height is also tightened from 1.9× to 1.7× / 1.55× for medium / long ayahs so vertical stacking doesn't push content off-screen before the font shrink can help.
+
+### Audio interruption (recitation + ambient must coexist)
+expo-audio's default `interruptionMode` requests exclusive audio focus per player, so creating the ambient (rain / ocean / etc) player kicks the Quran recitation off mid-verse. Fix: `setAudioModeAsync({ ..., interruptionMode: 'mixWithOthers' })` is set once on mount in `app/index.tsx`. Both players now share the audio session and play simultaneously.
+
+### Picker auto-play
+The surah/ayah picker's primary CTA reads "Listen from ayah N", so it must start playback on confirm — previously it required an extra tap on the play button. `handlePickPosition` now plays immediately for same-surah picks (the bundle is already mounted) and uses a `shouldAutoPlayRef` flag for cross-surah picks (the audio listener effect re-attaches after the bundle rebuild and starts playback once the new player exists).
+
 ### Player controls (bottom)
 - For surahs with ≤30 ayahs: thin horizontal segments — one per ayah — that fill left-to-right as audio plays. Past ayahs show 100%, current shows live progress, future show 0%.
 - For longer surahs: a single overall progress bar across the whole surah (segments would be invisible at 286 wide).

@@ -19,6 +19,7 @@ import {
   Easing,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -258,18 +259,20 @@ export default function PlayerScreen() {
         result &&
         typeof (result as { catch?: unknown }).catch === "function"
       ) {
-        (result as Promise<unknown>).catch(() => {});
+        (result as Promise<unknown>).catch((err) => {
+          if (__DEV__) console.warn("[audio] play() rejected:", err);
+        });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      if (__DEV__) console.warn("[audio] play() threw:", err);
     }
   };
   const safePause = (p: AudioPlayer | null | undefined) => {
     if (!p) return;
     try {
       p.pause();
-    } catch {
-      // ignore
+    } catch (err) {
+      if (__DEV__) console.warn("[audio] pause() threw:", err);
     }
   };
   const safeSeekZero = (p: AudioPlayer | null | undefined) => {
@@ -280,20 +283,19 @@ export default function PlayerScreen() {
         r &&
         typeof (r as { catch?: unknown }).catch === "function"
       ) {
-        (r as Promise<unknown>).catch(() => {});
+        (r as Promise<unknown>).catch((err) => {
+          if (__DEV__) console.warn("[audio] seekTo(0) rejected:", err);
+        });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      if (__DEV__) console.warn("[audio] seekTo(0) threw:", err);
     }
   };
 
-  // Eagerly create the player for the *current* ayah so the listener can
-  // attach immediately (covers both first-mount and surah changes).
-  if (bundle.players[index] == null) {
-    bundle.players[index] = createAudioPlayer({
-      uri: audioUrlForGlobalAyah(ayahs[index].globalNumber),
-    });
-  }
+  // (Player for the current ayah is created lazily by the audio listener
+  // effect via getPlayer(index). We deliberately avoid creating it during
+  // render — under React 18 StrictMode the render runs twice and we'd leak
+  // the first AudioPlayer instance.)
 
   // === Ambient player (independent — keeps looping while recitation plays) ===
   const ambientPlayerRef = useRef<AudioPlayer | null>(null);
@@ -324,14 +326,29 @@ export default function PlayerScreen() {
   }, [settings.background, activeBg, bgFade]);
   const activeBgOpt = getBackground(activeBg);
 
-  // Audio session: play in silent mode and continue in the background
-  // (lock-screen friendly on iOS).
+  // Audio session: play in silent mode, continue in the background, and
+  // critically — `interruptionMode: 'mixWithOthers'` so the recitation
+  // player and the ambient (rain / ocean / etc) player can play SIMULTANEOUSLY.
+  // Without this, expo-audio's default behaviour grabs an exclusive audio
+  // focus session per player and the ambient player kicks the recitation
+  // off mid-verse.
   useEffect(() => {
     setAudioModeAsync({
       playsInSilentMode: true,
       shouldPlayInBackground: true,
-    }).catch(() => {});
+      interruptionMode: "mixWithOthers",
+      allowsRecording: false,
+      shouldRouteThroughEarpiece: false,
+    }).catch((err) => {
+      if (__DEV__) console.warn("[audio] setAudioModeAsync failed:", err);
+    });
   }, []);
+
+  // Set true by handlePickPosition when the user just confirmed an ayah
+  // and we want to start playback as soon as the new bundle's listener
+  // attaches. This bridges the gap between "switch surah" (which causes a
+  // bundle rebuild) and "play the picked ayah".
+  const shouldAutoPlayRef = useRef(false);
 
   // Audio status subscription — re-attaches whenever index OR surah changes.
   useEffect(() => {
@@ -379,6 +396,17 @@ export default function PlayerScreen() {
     // Pre-create the next player so it can pre-load.
     if (index < ayahs.length - 1) {
       getPlayer(index + 1);
+    }
+
+    // If the user just confirmed an ayah from the picker for a *different*
+    // surah, the bundle was rebuilt and we now have a fresh player attached.
+    // Start playback now — that's what the picker's "Listen from ayah N"
+    // CTA promised.
+    if (shouldAutoPlayRef.current) {
+      shouldAutoPlayRef.current = false;
+      safeSeekZero(player);
+      safePlay(player);
+      setIsPlaying(true);
     }
 
     return () => {
@@ -595,42 +623,78 @@ export default function PlayerScreen() {
     setProgress(0);
   }, [getPlayer, bundle, pokeControls]);
 
-  // Picker callback — switches surah and/or jumps to a specific ayah.
-  // Pauses current playback before switching so we don't bleed audio across
-  // surahs.
+  // Picker callback — switches surah and/or jumps to a specific ayah, then
+  // starts playback (the picker's primary action is "Listen from ayah N",
+  // so the user expects audio).
   const handlePickPosition = useCallback(
     (surahNumber: number, ayahNumber: number) => {
-      const cur = bundle.players[indexRef.current];
-      if (cur) safePause(cur);
-      setIsPlaying(false);
+      // Stop the currently-playing ayah so we don't bleed audio.
+      const oldPlayer = bundle.players[indexRef.current];
+      if (oldPlayer) {
+        safePause(oldPlayer);
+        safeSeekZero(oldPlayer);
+      }
       setHasFinished(false);
       setProgress(0);
       const newIndex = ayahNumber - 1;
-      // If only the ayah changed within the same surah, no bundle rebuild
-      // happens — we just need to seek the existing player.
+
       if (surahNumber === surah.number) {
-        const oldPlayer = bundle.players[indexRef.current];
-        if (oldPlayer) safeSeekZero(oldPlayer);
+        // Same surah: bundle stays, we can play immediately.
         setIndex(newIndex);
         setDisplayedIndex(newIndex);
+        const next = getPlayer(newIndex);
+        safeSeekZero(next);
+        safePlay(next);
+        setIsPlaying(true);
+        setIsLoading(true);
       } else {
+        // Different surah: the bundle is about to be rebuilt by the surah
+        // memo. We can't grab a player from the *new* bundle yet — defer
+        // playback to the listener effect via the shouldAutoPlay flag.
+        shouldAutoPlayRef.current = true;
         setIndex(newIndex);
         setDisplayedIndex(newIndex);
+        setIsPlaying(true);
+        setIsLoading(true);
       }
       setPosition(surahNumber, ayahNumber);
       setPickerOpen(false);
     },
-    [bundle, surah.number, setPosition],
+    [bundle, surah.number, setPosition, getPlayer],
   );
 
-  // Responsive Arabic font size — Mushaf-quality at every breakpoint.
-  const arabicFontSize = useMemo(() => {
+  // Responsive Arabic font size — Mushaf-quality on short ayahs, but
+  // gracefully scaled DOWN for very long ones (Al-Baqarah ayah 282 is
+  // ~1500 Arabic chars). Combined with the verse ScrollView below, this
+  // keeps every ayah readable without overflowing the screen.
+  const baseArabicFontSize = useMemo(() => {
     if (width >= 900) return 60;
     if (width >= 700) return 52;
     if (width >= 500) return 44;
     if (width >= 380) return 36;
     return 32;
   }, [width]);
+
+  const computeArabicFontSize = useCallback(
+    (charLen: number) => {
+      const base = baseArabicFontSize;
+      if (charLen > 1000) return Math.max(22, Math.round(base * 0.6));
+      if (charLen > 500) return Math.max(24, Math.round(base * 0.7));
+      if (charLen > 250) return Math.max(28, Math.round(base * 0.82));
+      if (charLen > 120) return Math.max(30, Math.round(base * 0.92));
+      return base;
+    },
+    [baseArabicFontSize],
+  );
+
+  // Tighter line-height on long ayahs — the default 1.9× stacks the lines
+  // far apart and pushes content off-screen long before the font shrink
+  // would help on its own.
+  const computeArabicLineHeight = useCallback(
+    (fontSize: number, charLen: number) =>
+      fontSize * (charLen > 400 ? 1.55 : charLen > 150 ? 1.7 : 1.9),
+    [],
+  );
 
   const translationFontSize = width >= 700 ? 16 : 14;
 
@@ -777,37 +841,45 @@ export default function PlayerScreen() {
             // animating — saves rendering ~280 hidden views for Al-Baqarah.
             const isLive = i === index || i === displayedIndex;
             if (!isLive) return null;
+            const charLen = a.arabic.length + a.translation.length;
+            const arFs = computeArabicFontSize(a.arabic.length);
+            const arLh = computeArabicLineHeight(arFs, a.arabic.length);
             return (
               <Animated.View
                 key={`${surah.number}-${a.number}`}
-                pointerEvents="none"
                 style={[
                   StyleSheet.absoluteFill,
-                  styles.verseBox,
                   { opacity: bundle.opacities[i] },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.arabic,
-                    {
-                      fontSize: arabicFontSize,
-                      lineHeight: arabicFontSize * 1.9,
-                    },
+                <ScrollView
+                  contentContainerStyle={[
+                    styles.verseBox,
+                    { paddingVertical: 16 },
                   ]}
-                  allowFontScaling={false}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  scrollEnabled={charLen > 400}
                 >
-                  {a.arabic}
-                  {ayahMarker(a.number)}
-                </Text>
-                <Text
-                  style={[
-                    styles.translation,
-                    { fontSize: translationFontSize },
-                  ]}
-                >
-                  {a.translation}
-                </Text>
+                  <Text
+                    style={[
+                      styles.arabic,
+                      { fontSize: arFs, lineHeight: arLh },
+                    ]}
+                    allowFontScaling={false}
+                  >
+                    {a.arabic}
+                    {ayahMarker(a.number)}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.translation,
+                      { fontSize: translationFontSize },
+                    ]}
+                  >
+                    {a.translation}
+                  </Text>
+                </ScrollView>
               </Animated.View>
             );
           })}
@@ -1033,6 +1105,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   verseBox: {
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 8,
