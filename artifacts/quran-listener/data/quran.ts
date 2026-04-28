@@ -1,0 +1,163 @@
+import quranJson from "./quran.json";
+
+export type RevelationType = "Meccan" | "Medinan";
+
+export interface Ayah {
+  /** 1-based ayah number within the surah (1..ayahCount). */
+  number: number;
+  /** 1-based global ayah number across the whole Quran (1..6236). Used for audio. */
+  globalNumber: number;
+  /** Arabic text in Uthmani script. */
+  arabic: string;
+  /** English translation (Sahih International). */
+  translation: string;
+}
+
+export interface Surah {
+  /** Surah number (1..114). */
+  number: number;
+  /** Arabic surah name (e.g. "سُورَةُ ٱلْفَاتِحَةِ"). */
+  nameArabic: string;
+  /** Latin transliteration (e.g. "Al-Faatiha"). */
+  nameLatin: string;
+  /** English meaning (e.g. "The Opening"). */
+  meaning: string;
+  /** Place of revelation. */
+  revelationType: RevelationType;
+  /** Number of ayahs in the surah. Always equal to `ayahs.length`. */
+  ayahCount: number;
+  /** Ayahs in order. */
+  ayahs: Ayah[];
+}
+
+// The bundled JSON is the single source of truth — it was generated from
+// alquran.cloud (Uthmani Arabic + Sahih International English) and validated
+// at build time. The runtime `validateQuran` below re-checks the invariants
+// every cold start so corruption never reaches the UI.
+const SURAHS = quranJson as Surah[];
+
+export const surahs: ReadonlyArray<Surah> = SURAHS;
+
+export const TOTAL_SURAHS = 114;
+export const TOTAL_AYAHS = 6236;
+
+export const reciter = "Mishary Rashid Alafasy";
+
+/**
+ * Get a surah by its 1-based number. Throws if `n` is out of range so callers
+ * fail loudly instead of silently rendering blank text.
+ */
+export function getSurah(n: number): Surah {
+  if (!Number.isInteger(n) || n < 1 || n > TOTAL_SURAHS) {
+    throw new Error(`getSurah: invalid surah number ${n}`);
+  }
+  return SURAHS[n - 1];
+}
+
+/**
+ * Get a single ayah within a surah. `ayahNumber` is 1-based within the surah.
+ */
+export function getAyah(surahNumber: number, ayahNumber: number): Ayah {
+  const surah = getSurah(surahNumber);
+  if (
+    !Number.isInteger(ayahNumber) ||
+    ayahNumber < 1 ||
+    ayahNumber > surah.ayahCount
+  ) {
+    throw new Error(
+      `getAyah: ayah ${ayahNumber} out of range for surah ${surahNumber} (1..${surah.ayahCount})`,
+    );
+  }
+  return surah.ayahs[ayahNumber - 1];
+}
+
+/** Build the audio URL for a given global ayah number. */
+export function audioUrlForGlobalAyah(globalNumber: number): string {
+  return `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${globalNumber}.mp3`;
+}
+
+/** Convert an integer to Arabic-Indic digits (e.g. 12 → "١٢"). */
+const ARABIC_INDIC = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"] as const;
+export function toArabicIndic(n: number): string {
+  return String(n)
+    .split("")
+    .map((d) => ARABIC_INDIC[Number(d)] ?? d)
+    .join("");
+}
+
+/**
+ * The end-of-ayah marker rendered after the verse. The KFGQPC font draws each
+ * Arabic-Indic digit inside its own ornament — that IS the proper marker, so
+ * we do NOT prepend U+06DD (which would draw an additional empty rosette).
+ */
+export function ayahMarker(n: number): string {
+  return `\u00A0${toArabicIndic(n)}`;
+}
+
+export interface ValidationResult {
+  ok: boolean;
+  errors: string[];
+}
+
+/**
+ * Strict structural validation of the bundled corpus. Run at app start in dev
+ * (and in the test script) to guarantee the data model can never silently
+ * drift out of alignment.
+ */
+export function validateQuran(): ValidationResult {
+  const errors: string[] = [];
+
+  if (SURAHS.length !== TOTAL_SURAHS) {
+    errors.push(`Expected ${TOTAL_SURAHS} surahs, got ${SURAHS.length}`);
+  }
+
+  let runningTotal = 0;
+  let expectedGlobal = 1;
+
+  for (let i = 0; i < SURAHS.length; i++) {
+    const s = SURAHS[i];
+    const expectedNumber = i + 1;
+    if (s.number !== expectedNumber) {
+      errors.push(`Surah at index ${i} has number ${s.number}, expected ${expectedNumber}`);
+    }
+    if (!s.nameArabic || !s.nameLatin) {
+      errors.push(`Surah ${s.number} is missing a name`);
+    }
+    if (s.revelationType !== "Meccan" && s.revelationType !== "Medinan") {
+      errors.push(`Surah ${s.number} has invalid revelationType "${s.revelationType}"`);
+    }
+    if (s.ayahCount !== s.ayahs.length) {
+      errors.push(
+        `Surah ${s.number}: ayahCount=${s.ayahCount} disagrees with ayahs.length=${s.ayahs.length}`,
+      );
+    }
+
+    for (let j = 0; j < s.ayahs.length; j++) {
+      const a = s.ayahs[j];
+      const expectedAyah = j + 1;
+      if (a.number !== expectedAyah) {
+        errors.push(`Surah ${s.number} ayah at index ${j} has number ${a.number}, expected ${expectedAyah}`);
+      }
+      if (a.globalNumber !== expectedGlobal) {
+        errors.push(
+          `Surah ${s.number} ayah ${a.number}: globalNumber=${a.globalNumber}, expected ${expectedGlobal}`,
+        );
+      }
+      if (typeof a.arabic !== "string" || a.arabic.length === 0) {
+        errors.push(`Surah ${s.number} ayah ${a.number}: missing Arabic text`);
+      }
+      if (typeof a.translation !== "string" || a.translation.length === 0) {
+        errors.push(`Surah ${s.number} ayah ${a.number}: missing translation`);
+      }
+      expectedGlobal++;
+    }
+
+    runningTotal += s.ayahs.length;
+  }
+
+  if (runningTotal !== TOTAL_AYAHS) {
+    errors.push(`Total ayahs ${runningTotal}, expected ${TOTAL_AYAHS}`);
+  }
+
+  return { ok: errors.length === 0, errors };
+}

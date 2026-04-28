@@ -11,19 +11,24 @@ import {
   type BackgroundId,
   DEFAULT_BACKGROUND,
 } from "@/data/backgrounds";
+import { getSurah, TOTAL_SURAHS } from "@/data/quran";
 import {
   DEFAULT_TRANSITION,
   type TransitionMode,
   TRANSITIONS,
 } from "./transitions";
 
-const STORAGE_KEY = "quran-listener-settings-v2";
+const STORAGE_KEY = "quran-listener-settings-v3";
 
 export interface Settings {
   transition: TransitionMode;
   background: BackgroundId;
   ambient: AmbientId;
   ambientVolume: number; // 0..1
+  /** 1-based surah number (1..114). */
+  surah: number;
+  /** 1-based ayah number within the current surah. */
+  ayah: number;
 }
 
 const defaultSettings: Settings = {
@@ -31,6 +36,8 @@ const defaultSettings: Settings = {
   background: DEFAULT_BACKGROUND,
   ambient: DEFAULT_AMBIENT,
   ambientVolume: DEFAULT_AMBIENT_VOLUME,
+  surah: 1,
+  ayah: 1,
 };
 
 const isValidTransition = (v: unknown): v is TransitionMode =>
@@ -42,6 +49,17 @@ const isValidAmbient = (v: unknown): v is AmbientId =>
 const clampVolume = (v: unknown): number => {
   if (typeof v !== "number" || Number.isNaN(v)) return DEFAULT_AMBIENT_VOLUME;
   return Math.max(0, Math.min(1, v));
+};
+const clampSurah = (v: unknown): number => {
+  if (!Number.isInteger(v) || (v as number) < 1 || (v as number) > TOTAL_SURAHS) {
+    return 1;
+  }
+  return v as number;
+};
+const clampAyah = (surahNumber: number, v: unknown): number => {
+  const max = getSurah(surahNumber).ayahCount;
+  if (!Number.isInteger(v) || (v as number) < 1 || (v as number) > max) return 1;
+  return v as number;
 };
 
 export function useSettings() {
@@ -56,6 +74,7 @@ export function useSettings() {
         if (cancelled) return;
         if (raw) {
           const parsed = JSON.parse(raw) as Partial<Settings>;
+          const surah = clampSurah(parsed.surah);
           setSettings({
             transition: isValidTransition(parsed.transition)
               ? parsed.transition
@@ -67,6 +86,8 @@ export function useSettings() {
               ? parsed.ambient
               : defaultSettings.ambient,
             ambientVolume: clampVolume(parsed.ambientVolume),
+            surah,
+            ayah: clampAyah(surah, parsed.ayah),
           });
         }
       } catch {
@@ -96,11 +117,36 @@ export function useSettings() {
   const setAmbientVolume = (ambientVolume: number) =>
     setSettings((s) => ({ ...s, ambientVolume: clampVolume(ambientVolume) }));
 
+  /**
+   * Atomically update both surah and ayah. The ayah is clamped to the new
+   * surah's ayah count so we can never persist an out-of-range position.
+   */
+  const setPosition = (surah: number, ayah: number) =>
+    setSettings((s) => {
+      const sN = clampSurah(surah);
+      return { ...s, surah: sN, ayah: clampAyah(sN, ayah) };
+    });
+
+  /**
+   * Update only the ayah within the current surah (e.g. as playback advances).
+   * Skipped if the value matches what's already persisted to avoid useless
+   * AsyncStorage churn on every progress tick.
+   */
+  const setAyah = (ayah: number) =>
+    setSettings((s) => {
+      const next = clampAyah(s.surah, ayah);
+      if (next === s.ayah) return s;
+      return { ...s, ayah: next };
+    });
+
   return {
     settings,
+    hydrated,
     setTransition,
     setBackground,
     setAmbient,
     setAmbientVolume,
+    setPosition,
+    setAyah,
   };
 }
