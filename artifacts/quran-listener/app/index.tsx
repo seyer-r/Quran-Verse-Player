@@ -101,6 +101,9 @@ export default function PlayerScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerInitialStep, setPickerInitialStep] = useState<
+    "surah" | "ayah"
+  >("surah");
 
   // Auto-hide UI chrome (header, ayah counter, footer controls) — like a
   // video player. Tap anywhere to toggle. Only auto-hides while playing.
@@ -698,6 +701,7 @@ export default function PlayerScreen() {
             style={styles.headerLeft}
             onPress={() => {
               pokeControls();
+              setPickerInitialStep("surah");
               setPickerOpen(true);
             }}
             accessibilityLabel="Choose surah"
@@ -748,6 +752,7 @@ export default function PlayerScreen() {
           <TouchableOpacity
             onPress={() => {
               pokeControls();
+              setPickerInitialStep("ayah");
               setPickerOpen(true);
             }}
             hitSlop={10}
@@ -942,6 +947,7 @@ export default function PlayerScreen() {
         currentSurah={surah.number}
         currentAyah={index + 1}
         onSelect={handlePickPosition}
+        initialStep={pickerInitialStep}
       />
     </View>
   );
