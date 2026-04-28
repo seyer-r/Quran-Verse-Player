@@ -10,6 +10,35 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
 
+// Browsers reject HTMLAudioElement.play() with NotAllowedError when the
+// caller doesn't have an active user-gesture grant (autoplay policy). On
+// native platforms this never happens. Silently swallow only those specific
+// rejections so they don't crash the React tree on the web preview.
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  const isAutoplayRejection = (reason: unknown) => {
+    if (!reason || typeof reason !== "object") return false;
+    const r = reason as { name?: string; message?: string };
+    if (r.name === "NotAllowedError" || r.name === "AbortError") return true;
+    if (typeof r.message === "string") {
+      const m = r.message.toLowerCase();
+      return (
+        m.includes("not allowed") ||
+        m.includes("user agent") ||
+        m.includes("user denied permission") ||
+        m.includes("interrupted by a call to pause") ||
+        m.includes("interrupted by a new load request")
+      );
+    }
+    return false;
+  };
+
+  window.addEventListener("unhandledrejection", (event) => {
+    if (isAutoplayRejection((event as PromiseRejectionEvent).reason)) {
+      event.preventDefault();
+    }
+  });
+}
+
 function RootLayoutNav() {
   return (
     <Stack

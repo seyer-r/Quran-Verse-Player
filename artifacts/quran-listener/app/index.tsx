@@ -78,10 +78,65 @@ export default function PlayerScreen() {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // === Recitation player ===
-  const playerRef = useRef<AudioPlayer | null>(null);
-  if (playerRef.current === null) {
-    playerRef.current = createAudioPlayer(ayahs[0].audioUrl);
+  // === Recitation players — ONE per ayah ===
+  // Using one persistent AudioPlayer per ayah (instead of a single player +
+  // .replace()) preserves the browser's autoplay grant across verses on web,
+  // and gives gap-less transitions on native because each track is already
+  // buffered when its turn arrives.
+  const playersRef = useRef<(AudioPlayer | null)[]>(
+    ayahs.map(() => null),
+  );
+  const getPlayer = useCallback((i: number): AudioPlayer => {
+    let p = playersRef.current[i];
+    if (!p) {
+      p = createAudioPlayer({ uri: ayahs[i].audioUrl });
+      playersRef.current[i] = p;
+    }
+    return p;
+  }, []);
+
+  const safePlay = (p: AudioPlayer | null | undefined) => {
+    if (!p) return;
+    try {
+      const result = p.play() as unknown;
+      if (
+        result &&
+        typeof (result as { catch?: unknown }).catch === "function"
+      ) {
+        (result as Promise<unknown>).catch(() => {
+          // autoplay policy etc. — already swallowed globally too
+        });
+      }
+    } catch {
+      // ignore
+    }
+  };
+  const safePause = (p: AudioPlayer | null | undefined) => {
+    if (!p) return;
+    try {
+      p.pause();
+    } catch {
+      // ignore
+    }
+  };
+  const safeSeekZero = (p: AudioPlayer | null | undefined) => {
+    if (!p) return;
+    try {
+      const r = p.seekTo(0) as unknown;
+      if (
+        r &&
+        typeof (r as { catch?: unknown }).catch === "function"
+      ) {
+        (r as Promise<unknown>).catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  // Eagerly create the first player so the listener can attach immediately.
+  if (playersRef.current[0] === null) {
+    playersRef.current[0] = createAudioPlayer({ uri: ayahs[0].audioUrl });
   }
 
   // === Ambient player (independent — keeps looping while recitation plays) ===
@@ -128,14 +183,18 @@ export default function PlayerScreen() {
     });
   }, []);
 
-  // Audio status subscription — drives progress and auto-advance.
+  // Audio status subscription — re-attaches to the active ayah's player
+  // whenever the index changes. Drives progress + auto-advance.
   useEffect(() => {
-    const player = playerRef.current;
-    if (!player) return;
+    const player = getPlayer(index);
+    setProgress(0);
+    setIsLoading(true);
 
     const sub = player.addListener(
       "playbackStatusUpdate",
       (status: AudioStatus) => {
+        // Ignore updates from a stale player after we've moved on.
+        if (indexRef.current !== index) return;
         if (!status.isLoaded) {
           setIsLoading(true);
           return;
@@ -152,8 +211,17 @@ export default function PlayerScreen() {
         if (status.didJustFinish) {
           const cur = indexRef.current;
           if (cur < ayahs.length - 1) {
+            // Pause the just-finished player and rewind it for next time.
+            safePause(player);
+            safeSeekZero(player);
+            // Pre-create the next player so it's buffering already.
+            const next = getPlayer(cur + 1);
+            if (isPlayingRef.current) {
+              safePlay(next);
+            }
             setIndex(cur + 1);
           } else {
+            safePause(player);
             setIsPlaying(false);
             setHasFinished(true);
             setProgress(100);
@@ -162,26 +230,15 @@ export default function PlayerScreen() {
       },
     );
 
+    // Pre-create the next player in the background so it can pre-load.
+    if (index < ayahs.length - 1) {
+      getPlayer(index + 1);
+    }
+
     return () => {
       sub.remove();
     };
-  }, []);
-
-  // Load a new track whenever index changes.
-  useEffect(() => {
-    const player = playerRef.current;
-    if (!player) return;
-    setProgress(0);
-    setIsLoading(true);
-    try {
-      player.replace({ uri: ayahs[index].audioUrl });
-      if (isPlayingRef.current) {
-        player.play();
-      }
-    } catch {
-      setIsLoading(false);
-    }
-  }, [index]);
+  }, [index, getPlayer]);
 
   // Drive the visual transition between verses based on the chosen mode.
   useEffect(() => {
@@ -280,20 +337,22 @@ export default function PlayerScreen() {
       } catch {
         // ignore
       }
-      p.play();
+      safePlay(p);
       ambientPlayerRef.current = p;
     } catch {
       // ignore
     }
   }, [settings.ambient, settings.ambientVolume]);
 
-  // Cleanup both players on unmount.
+  // Cleanup all players on unmount.
   useEffect(() => {
     return () => {
-      try {
-        playerRef.current?.remove();
-      } catch {
-        // ignore
+      for (const p of playersRef.current) {
+        try {
+          p?.remove();
+        } catch {
+          // ignore
+        }
       }
       try {
         ambientPlayerRef.current?.remove();
@@ -304,74 +363,90 @@ export default function PlayerScreen() {
   }, []);
 
   const togglePlay = useCallback(() => {
-    const player = playerRef.current;
-    if (!player) return;
     if (hasFinished) {
-      // Restart from the beginning. Force-reload track 0 even if index is
-      // already 0, so the source effect doesn't get short-circuited.
+      // Restart from the beginning.
       setHasFinished(false);
-      try {
-        player.replace({ uri: ayahs[0].audioUrl });
-        player.play();
-      } catch {
-        // ignore
+      // Reset every player back to position 0.
+      for (const p of playersRef.current) {
+        if (p) safeSeekZero(p);
       }
+      const first = getPlayer(0);
+      safePlay(first);
       setIndex(0);
       setIsPlaying(true);
       setProgress(0);
       return;
     }
+    const player = getPlayer(indexRef.current);
     if (player.playing) {
-      player.pause();
+      safePause(player);
       setIsPlaying(false);
     } else {
       setIsLoading(true);
-      try {
-        player.play();
-        setIsPlaying(true);
-      } catch {
-        setIsPlaying(false);
-        setIsLoading(false);
-      }
+      safePlay(player);
+      setIsPlaying(true);
     }
-  }, [hasFinished]);
+  }, [hasFinished, getPlayer]);
 
   const goPrev = useCallback(() => {
-    if (index > 0) {
+    const cur = indexRef.current;
+    if (cur > 0) {
       setHasFinished(false);
-      setIndex(index - 1);
-    } else {
-      const player = playerRef.current;
-      if (player) {
-        try {
-          player.seekTo(0);
-        } catch {
-          // ignore
-        }
+      const wasPlaying = isPlayingRef.current;
+      const old = playersRef.current[cur];
+      if (old) {
+        safePause(old);
+        safeSeekZero(old);
       }
+      const prev = getPlayer(cur - 1);
+      safeSeekZero(prev);
+      if (wasPlaying) safePlay(prev);
+      setIndex(cur - 1);
+    } else {
+      const player = getPlayer(0);
+      safeSeekZero(player);
     }
-  }, [index]);
+  }, [getPlayer]);
 
   const goNext = useCallback(() => {
-    if (index < ayahs.length - 1) {
+    const cur = indexRef.current;
+    if (cur < ayahs.length - 1) {
       setHasFinished(false);
-      setIndex(index + 1);
+      const wasPlaying = isPlayingRef.current;
+      const old = playersRef.current[cur];
+      if (old) {
+        safePause(old);
+        safeSeekZero(old);
+      }
+      const next = getPlayer(cur + 1);
+      safeSeekZero(next);
+      if (wasPlaying) safePlay(next);
+      setIndex(cur + 1);
     }
-  }, [index]);
+  }, [getPlayer]);
 
   const restart = useCallback(() => {
-    const player = playerRef.current;
     setHasFinished(false);
-    try {
-      player?.replace({ uri: ayahs[0].audioUrl });
-      player?.play();
-    } catch {
-      // ignore
+    const cur = indexRef.current;
+    // Pause whatever is currently active.
+    const old = playersRef.current[cur];
+    if (old) {
+      safePause(old);
+      safeSeekZero(old);
     }
+    // Reset all other players too so progress bars are clean.
+    for (let i = 0; i < playersRef.current.length; i++) {
+      if (i === cur) continue;
+      const p = playersRef.current[i];
+      if (p) safeSeekZero(p);
+    }
+    const first = getPlayer(0);
+    safeSeekZero(first);
+    safePlay(first);
     setIndex(0);
     setIsPlaying(true);
     setProgress(0);
-  }, []);
+  }, [getPlayer]);
 
   // Responsive Arabic font size — Mushaf-quality at every breakpoint.
   const arabicFontSize = useMemo(() => {
