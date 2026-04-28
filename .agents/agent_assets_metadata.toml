@@ -18,3 +18,27 @@ id = "nfSUsfBYTj8FFn05gFKPC"
 uri = "file://artifacts/quran-listener/assets/images/icon.png"
 type = "image"
 title = "quran app icon"
+
+[[generated]]
+id = "13rUOI7dxAuP10kmT4s_8"
+uri = "file://artifacts/quran-listener/assets/images/bg-mountains.png"
+type = "image"
+title = "mountain twilight bg"
+
+[[generated]]
+id = "WdkMKgPDaPF3njsbeAB5q"
+uri = "file://artifacts/quran-listener/assets/images/bg-ocean.png"
+type = "image"
+title = "ocean night bg"
+
+[[generated]]
+id = "OHokLHT9QL-YyyyjV2yuZ"
+uri = "file://artifacts/quran-listener/assets/images/bg-forest.png"
+type = "image"
+title = "misty forest bg"
+
+[[generated]]
+id = "jPF7SXQfYuOfbJxHOxQnx"
+uri = "file://artifacts/quran-listener/assets/images/bg-stars.png"
+type = "image"
+title = "starry desert sky bg"
