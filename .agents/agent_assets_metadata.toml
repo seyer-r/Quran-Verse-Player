@@ -42,3 +42,33 @@ id = "jPF7SXQfYuOfbJxHOxQnx"
 uri = "file://artifacts/quran-listener/assets/images/bg-stars.png"
 type = "image"
 title = "starry desert sky bg"
+
+[[generated]]
+id = "efUDzrXiidOJKOfv-cOuP"
+uri = "file://artifacts/quran-listener/assets/images/bg-desert.png"
+type = "image"
+title = "desert dunes golden hour"
+
+[[generated]]
+id = "AQT8ASRpm-noMt_4-1v-u"
+uri = "file://artifacts/quran-listener/assets/images/bg-aurora.png"
+type = "image"
+title = "northern lights lake"
+
+[[generated]]
+id = "m_uX8Ji4j9YmeJpTn6D4A"
+uri = "file://artifacts/quran-listener/assets/images/bg-misty-mountains.png"
+type = "image"
+title = "misty mountains dawn"
+
+[[generated]]
+id = "iOZde1ttEdy1U58hO9WI8"
+uri = "file://artifacts/quran-listener/assets/images/bg-milky-way.png"
+type = "image"
+title = "milky way night sky"
+
+[[generated]]
+id = "SWsvibwCXfx8uWjwoesX_"
+uri = "file://artifacts/quran-listener/assets/images/bg-mosque.png"
+type = "image"
+title = "minimalist mosque interior"

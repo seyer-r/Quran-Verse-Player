@@ -29,7 +29,15 @@ export interface Settings {
   surah: number;
   /** 1-based ayah number within the current surah. */
   ayah: number;
+  /**
+   * When true, finishing the last ayah of a surah automatically advances
+   * to the first ayah of the next surah and starts playback. Stops at
+   * surah 114.
+   */
+  autoplayNextSurah: boolean;
 }
+
+const DEFAULT_AUTOPLAY_NEXT_SURAH = true;
 
 const defaultSettings: Settings = {
   transition: DEFAULT_TRANSITION,
@@ -38,6 +46,7 @@ const defaultSettings: Settings = {
   ambientVolume: DEFAULT_AMBIENT_VOLUME,
   surah: 1,
   ayah: 1,
+  autoplayNextSurah: DEFAULT_AUTOPLAY_NEXT_SURAH,
 };
 
 const isValidTransition = (v: unknown): v is TransitionMode =>
@@ -61,6 +70,11 @@ const clampAyah = (surahNumber: number, v: unknown): number => {
   if (!Number.isInteger(v) || (v as number) < 1 || (v as number) > max) return 1;
   return v as number;
 };
+// Backwards-compatible: stored payloads from v3.0 don't have this field.
+// Treat undefined as the default (true) so existing users get the new
+// behavior without a wiped session.
+const coerceAutoplayNextSurah = (v: unknown): boolean =>
+  typeof v === "boolean" ? v : DEFAULT_AUTOPLAY_NEXT_SURAH;
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -88,6 +102,7 @@ export function useSettings() {
             ambientVolume: clampVolume(parsed.ambientVolume),
             surah,
             ayah: clampAyah(surah, parsed.ayah),
+            autoplayNextSurah: coerceAutoplayNextSurah(parsed.autoplayNextSurah),
           });
         }
       } catch {
@@ -116,6 +131,8 @@ export function useSettings() {
     setSettings((s) => ({ ...s, ambient }));
   const setAmbientVolume = (ambientVolume: number) =>
     setSettings((s) => ({ ...s, ambientVolume: clampVolume(ambientVolume) }));
+  const setAutoplayNextSurah = (autoplayNextSurah: boolean) =>
+    setSettings((s) => ({ ...s, autoplayNextSurah }));
 
   /**
    * Atomically update both surah and ayah. The ayah is clamped to the new
@@ -146,6 +163,7 @@ export function useSettings() {
     setBackground,
     setAmbient,
     setAmbientVolume,
+    setAutoplayNextSurah,
     setPosition,
     setAyah,
   };

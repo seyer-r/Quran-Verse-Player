@@ -37,6 +37,7 @@ import {
   audioUrlForGlobalAyah,
   getSurah,
   reciter,
+  TOTAL_SURAHS,
   validateQuran,
 } from "@/data/quran";
 import { getTransition } from "@/lib/transitions";
@@ -58,6 +59,7 @@ export default function PlayerScreen() {
     setBackground,
     setAmbient,
     setAmbientVolume,
+    setAutoplayNextSurah,
     setPosition,
     setAyah: persistAyah,
   } = useSettings();
@@ -117,6 +119,10 @@ export default function PlayerScreen() {
   const isPlayingRef = useRef(isPlaying);
   const settingsOpenRef = useRef(settingsOpen);
   const pickerOpenRef = useRef(pickerOpen);
+  // Mirrors settings.autoplayNextSurah for the audio listener closure,
+  // which is set up once per (surah, index) and otherwise wouldn't see
+  // settings changes between attaches.
+  const autoplayNextSurahRef = useRef(settings.autoplayNextSurah);
   useEffect(() => {
     indexRef.current = index;
   }, [index]);
@@ -129,6 +135,9 @@ export default function PlayerScreen() {
   useEffect(() => {
     pickerOpenRef.current = pickerOpen;
   }, [pickerOpen]);
+  useEffect(() => {
+    autoplayNextSurahRef.current = settings.autoplayNextSurah;
+  }, [settings.autoplayNextSurah]);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimer.current) {
@@ -151,9 +160,9 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [scheduleHide]);
 
-  const toggleChrome = useCallback(() => {
-    setChromeVisible((v) => !v);
-  }, []);
+  // pokeControls already does what we want for "tap anywhere": show the
+  // chrome and reset the auto-hide timer. We never hide on tap — auto-hide
+  // is the only way the chrome disappears.
 
   useEffect(() => {
     Animated.timing(chromeOpacity, {
@@ -379,10 +388,33 @@ export default function PlayerScreen() {
             }
             setIndex(cur + 1);
           } else {
+            // End of surah. If auto-advance is on and we're not yet at the
+            // last surah (114), jump to ayah 1 of the next surah and let
+            // the bundle-rebuild + listener re-attach pick up playback via
+            // the shouldAutoPlay flag (same path used by the picker for a
+            // cross-surah jump).
             safePause(player);
-            setIsPlaying(false);
-            setHasFinished(true);
-            setProgress(100);
+            const wasPlaying = isPlayingRef.current;
+            const canAdvance =
+              autoplayNextSurahRef.current &&
+              wasPlaying &&
+              surah.number < TOTAL_SURAHS;
+            if (canAdvance) {
+              shouldAutoPlayRef.current = true;
+              setProgress(0);
+              setHasFinished(false);
+              setIsLoading(true);
+              setIsPlaying(true);
+              // Reset local index BEFORE the settings update so when the
+              // new bundle mounts (with ayah 1) the index already aligns.
+              setIndex(0);
+              setDisplayedIndex(0);
+              setPosition(surah.number + 1, 1);
+            } else {
+              setIsPlaying(false);
+              setHasFinished(true);
+              setProgress(100);
+            }
           }
         }
       },
@@ -825,10 +857,11 @@ export default function PlayerScreen() {
         )}
       </Animated.View>
 
-      {/* === Tap-to-toggle layer wraps the chrome + stage === */}
+      {/* === Tap-anywhere layer wraps the chrome + stage. Tap reveals
+          the chrome and resets the auto-hide timer. === */}
       <Pressable
         style={styles.pressArea}
-        onPress={toggleChrome}
+        onPress={pokeControls}
         android_disableSound
       >
         {/* === Header === */}
@@ -920,7 +953,6 @@ export default function PlayerScreen() {
             // animating — saves rendering ~280 hidden views for Al-Baqarah.
             const isLive = i === index || i === displayedIndex;
             if (!isLive) return null;
-            const charLen = a.arabic.length + a.translation.length;
             const arFs = computeArabicFontSize(a.arabic.length);
             const arLh = computeArabicLineHeight(arFs, a.arabic.length);
             return (
@@ -931,6 +963,15 @@ export default function PlayerScreen() {
                   { opacity: bundle.opacities[i] },
                 ]}
               >
+                {/* ScrollView is always enabled so any verse that
+                    overflows the viewport (e.g. Al-Baqarah 282) can be
+                    scrolled. The font-scaling logic above still shrinks
+                    the longest ayahs, but scrolling is the safety net
+                    for screens too small to fit even the scaled font.
+                    Tap-to-wake-chrome is preserved by wrapping the
+                    content in a Pressable: a clean tap fires the inner
+                    onPress, while a drag is escalated to the ScrollView
+                    by the responder system. */}
                 <ScrollView
                   contentContainerStyle={[
                     styles.verseBox,
@@ -938,26 +979,33 @@ export default function PlayerScreen() {
                   ]}
                   showsVerticalScrollIndicator={false}
                   bounces={false}
-                  scrollEnabled={charLen > 400}
+                  scrollEnabled
+                  keyboardShouldPersistTaps="always"
                 >
-                  <Text
-                    style={[
-                      styles.arabic,
-                      { fontSize: arFs, lineHeight: arLh },
-                    ]}
-                    allowFontScaling={false}
+                  <Pressable
+                    onPress={pokeControls}
+                    android_disableSound
+                    style={styles.verseInner}
                   >
-                    {a.arabic}
-                    {ayahMarker(a.number)}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.translation,
-                      { fontSize: translationFontSize },
-                    ]}
-                  >
-                    {a.translation}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.arabic,
+                        { fontSize: arFs, lineHeight: arLh },
+                      ]}
+                      allowFontScaling={false}
+                    >
+                      {a.arabic}
+                      {ayahMarker(a.number)}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.translation,
+                        { fontSize: translationFontSize },
+                      ]}
+                    >
+                      {a.translation}
+                    </Text>
+                  </Pressable>
                 </ScrollView>
               </Animated.View>
             );
@@ -1086,10 +1134,12 @@ export default function PlayerScreen() {
         background={settings.background}
         ambient={settings.ambient}
         ambientVolume={settings.ambientVolume}
+        autoplayNextSurah={settings.autoplayNextSurah}
         onTransitionChange={setTransition}
         onBackgroundChange={setBackground}
         onAmbientChange={handleAmbientChange}
         onAmbientVolumeChange={handleAmbientVolumeChange}
+        onAutoplayNextSurahChange={setAutoplayNextSurah}
       />
 
       <SurahPicker
@@ -1188,6 +1238,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 8,
+  },
+  verseInner: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
   },
   arabic: {
     color: "#fff",

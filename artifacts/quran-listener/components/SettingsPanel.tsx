@@ -36,10 +36,12 @@ interface SettingsPanelProps {
   background: BackgroundId;
   ambient: AmbientId;
   ambientVolume: number;
+  autoplayNextSurah: boolean;
   onTransitionChange: (mode: TransitionMode) => void;
   onBackgroundChange: (id: BackgroundId) => void;
   onAmbientChange: (id: AmbientId) => void;
   onAmbientVolumeChange: (vol: number) => void;
+  onAutoplayNextSurahChange: (next: boolean) => void;
 }
 
 const ANIM_MS = 280;
@@ -51,10 +53,12 @@ export function SettingsPanel({
   background,
   ambient,
   ambientVolume,
+  autoplayNextSurah,
   onTransitionChange,
   onBackgroundChange,
   onAmbientChange,
   onAmbientVolumeChange,
+  onAutoplayNextSurahChange,
 }: SettingsPanelProps) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -292,6 +296,40 @@ export function SettingsPanel({
               </View>
             )}
 
+            {/* === PLAYBACK === */}
+            <SectionHeader title="Playback" style={{ marginTop: 28 }} />
+            <View style={styles.group}>
+              <View style={[styles.row, { paddingVertical: 12 }]}>
+                <View style={styles.rowIcon}>
+                  <Feather
+                    name="skip-forward"
+                    size={18}
+                    color={autoplayNextSurah ? "#f5f5f5" : "#737373"}
+                  />
+                </View>
+                <View style={styles.rowTextWrap}>
+                  <Text
+                    style={[
+                      styles.rowLabel,
+                      autoplayNextSurah && styles.rowLabelSelected,
+                    ]}
+                  >
+                    Auto-play next surah
+                  </Text>
+                  <Text style={styles.rowSubLabel}>
+                    Continue from ayah 1 of the next surah when this one ends.
+                  </Text>
+                </View>
+                <View style={styles.rowAccessory}>
+                  <ToggleSwitch
+                    value={autoplayNextSurah}
+                    onValueChange={onAutoplayNextSurahChange}
+                    accessibilityLabel="Auto-play next surah"
+                  />
+                </View>
+              </View>
+            </View>
+
             {/* === VERSE TRANSITION === */}
             <SectionHeader title="Verse transition" style={{ marginTop: 28 }} />
             <View style={styles.group}>
@@ -344,6 +382,70 @@ function SectionHeader({
   style?: object;
 }) {
   return <Text style={[styles.sectionHeader, style]}>{title}</Text>;
+}
+
+/**
+ * Minimal iOS-style toggle. Animated knob slides between off (left,
+ * neutral track) and on (right, gold track). Pure RN — no native
+ * dependency — so it renders identically on web preview and native.
+ */
+function ToggleSwitch({
+  value,
+  onValueChange,
+  accessibilityLabel,
+}: {
+  value: boolean;
+  onValueChange: (next: boolean) => void;
+  accessibilityLabel?: string;
+}) {
+  const TRACK_W = 46;
+  const TRACK_H = 28;
+  const KNOB = 24;
+  const PAD = 2;
+  const offX = PAD;
+  const onX = TRACK_W - KNOB - PAD;
+  const knobX = useRef(new Animated.Value(value ? onX : offX)).current;
+
+  useEffect(() => {
+    Animated.timing(knobX, {
+      toValue: value ? onX : offX,
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [value, knobX, onX, offX]);
+
+  return (
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      accessibilityLabel={accessibilityLabel}
+      hitSlop={8}
+      style={[
+        styles.toggleTrack,
+        {
+          width: TRACK_W,
+          height: TRACK_H,
+          borderRadius: TRACK_H / 2,
+          backgroundColor: value ? "#e8c078" : "rgba(255,255,255,0.14)",
+        },
+      ]}
+    >
+      <Animated.View
+        style={[
+          styles.toggleKnob,
+          {
+            width: KNOB,
+            height: KNOB,
+            borderRadius: KNOB / 2,
+            top: PAD,
+            transform: [{ translateX: knobX }],
+          },
+        ]}
+      />
+    </Pressable>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -533,5 +635,20 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: "rgba(255,255,255,0.10)",
     borderRadius: 6,
+  },
+
+  // Toggle switch
+  toggleTrack: {
+    position: "relative",
+    justifyContent: "center",
+  },
+  toggleKnob: {
+    position: "absolute",
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
 });

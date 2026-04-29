@@ -1,8 +1,18 @@
-// Background scenes — pure-black "None" by default plus four cinematic
+// Background scenes — pure-black "None" by default plus cinematic
 // nature scenes. Each background is dimmed under a vertical scrim so the
 // Arabic text always remains legible.
 
-export type BackgroundId = "none" | "mountains" | "ocean" | "forest" | "stars";
+export type BackgroundId =
+  | "none"
+  | "mountains"
+  | "ocean"
+  | "forest"
+  | "stars"
+  | "desert"
+  | "aurora"
+  | "misty-mountains"
+  | "milky-way"
+  | "mosque";
 
 export interface BackgroundOption {
   id: BackgroundId;
@@ -32,6 +42,31 @@ export const BACKGROUND_OPTIONS: BackgroundOption[] = [
     id: "stars",
     label: "Stars",
     source: require("../assets/images/bg-stars.png"),
+  },
+  {
+    id: "desert",
+    label: "Desert",
+    source: require("../assets/images/bg-desert.png"),
+  },
+  {
+    id: "aurora",
+    label: "Aurora",
+    source: require("../assets/images/bg-aurora.png"),
+  },
+  {
+    id: "misty-mountains",
+    label: "Mist",
+    source: require("../assets/images/bg-misty-mountains.png"),
+  },
+  {
+    id: "milky-way",
+    label: "Milky Way",
+    source: require("../assets/images/bg-milky-way.png"),
+  },
+  {
+    id: "mosque",
+    label: "Mosque",
+    source: require("../assets/images/bg-mosque.png"),
   },
 ];
 
