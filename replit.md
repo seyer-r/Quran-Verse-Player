@@ -110,12 +110,25 @@ Opens a slide-in panel from the right. First (and currently only) section: **Aya
 ### Persistence
 `lib/useSettings.ts` (storage key `quran-listener-settings-v3`) persists transition mode, background, ambient + volume, and **the current surah and ayah** so the app resumes at the same position next launch. All values are validated/clamped on load — out-of-range values fall back to defaults.
 
-### Font
-**KFGQPC Uthmanic Script HAFS** (the official typeface from the King Fahd Glorious Quran Printing Complex in Madinah). The `.otf` file (~240 KB) is bundled locally — do not rely on a CDN. License is non-commercial.
+### Fonts
+Two Arabic fonts are bundled locally — both must be loaded by `useFonts` in `app/_layout.tsx` before the splash screen hides, otherwise React Native renders any missing glyphs as a dotted-circle placeholder.
 
-Source URL: `https://raw.githubusercontent.com/raflyfahrezi/KFGQPC-Uthmanic-Script-HAFS-Regular/master/arabic.otf` (also identical to `mustafa0x/qpc-fonts/various/UthmanicHafs1 Ver09.otf`).
+- **AmiriQuran.ttf** (~133 KB, Amiri 1.001) — used for the **verse body** (`styles.arabic` in `app/index.tsx`). 1446 glyphs, full GSUB + GPOS coverage including mark and mkmk lookups, so every diacritic (tashkeel, sukun, shadda) anchors correctly to its base letter on every platform.
+- **UthmanicHafs.otf** (~240 KB, KFGQPC Uthmanic Script HAFS) — used only for the **surah-name display** in the header where it renders flawlessly. License is non-commercial.
 
-The original file is preserved at `.local/preserved/UthmanicHafs.otf` for re-use.
+Why the split: KFGQPC has gaps in its mark-positioning lookups for some less-common Quranic combinations, which caused diacritics to render on a dotted-circle placeholder. AmiriQuran is the modern, comprehensive Quranic typeface and is the safer default for the verse text.
+
+Sources:
+- AmiriQuran: `https://github.com/aliftype/amiri/releases/download/1.001/Amiri-1.001.zip` → `AmiriQuran.ttf`
+- UthmanicHafs: `https://raw.githubusercontent.com/raflyfahrezi/KFGQPC-Uthmanic-Script-HAFS-Regular/master/arabic.otf` (also preserved at `.local/preserved/UthmanicHafs.otf`).
+
+### Background dim toggle
+`settings.backgroundDim` (default `true`, persisted in AsyncStorage v3 payload, missing field coerced to `true` for backwards compatibility). When `true`, the player renders the standard 4-stop dark scrim over the photo background. When `false`, the scrim becomes near-transparent except for a faint bottom vignette so the footer controls and reciter label stay legible against bright skies. Toggle lives in the **Background** section of the settings panel (sun icon).
+
+### Skip throttle (race-condition fix)
+Rapid taps on prev / next used to leave the player desynced (paused player + isPlaying still true, dead controls) because each tap fired a fresh pause/seek/play sequence on top of the previous one. Two defenses in `app/index.tsx`:
+1. `skipLockRef` ignores any tap within `SKIP_COOLDOWN_MS` (220 ms) of the previous one. Single taps still feel instant; a frantic burst is collapsed to one transition.
+2. `indexRef.current` is updated **synchronously** inside `goPrev` / `goNext` before the React `setIndex` so the *next* allowed tap reads the post-skip index, not the stale one. `setIsPlaying(true)` is also called inside `wasPlaying` branches to keep the play-icon state in lockstep with the player we just kicked off (the audio listener can briefly emit `playing=false` during a fast pause/play swap).
 
 ### Preserved source files (for reference during the Expo rebuild)
 - `.local/preserved/al-fatiha.ts` — surah data (use as-is)

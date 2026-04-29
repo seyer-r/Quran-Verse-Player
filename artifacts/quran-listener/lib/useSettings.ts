@@ -35,9 +35,17 @@ export interface Settings {
    * surah 114.
    */
   autoplayNextSurah: boolean;
+  /**
+   * When true, a darkening gradient is laid over the background image so
+   * the verse text stays legible. When false, the user sees the image at
+   * full brightness with only a faint bottom gradient kept for the
+   * footer controls' contrast.
+   */
+  backgroundDim: boolean;
 }
 
 const DEFAULT_AUTOPLAY_NEXT_SURAH = true;
+const DEFAULT_BACKGROUND_DIM = true;
 
 const defaultSettings: Settings = {
   transition: DEFAULT_TRANSITION,
@@ -47,6 +55,7 @@ const defaultSettings: Settings = {
   surah: 1,
   ayah: 1,
   autoplayNextSurah: DEFAULT_AUTOPLAY_NEXT_SURAH,
+  backgroundDim: DEFAULT_BACKGROUND_DIM,
 };
 
 const isValidTransition = (v: unknown): v is TransitionMode =>
@@ -75,6 +84,11 @@ const clampAyah = (surahNumber: number, v: unknown): number => {
 // behavior without a wiped session.
 const coerceAutoplayNextSurah = (v: unknown): boolean =>
   typeof v === "boolean" ? v : DEFAULT_AUTOPLAY_NEXT_SURAH;
+// Backwards-compatible: stored payloads from older versions don't have
+// this field. Treat undefined as the default (true) so existing users
+// keep the dimmed background they're used to.
+const coerceBackgroundDim = (v: unknown): boolean =>
+  typeof v === "boolean" ? v : DEFAULT_BACKGROUND_DIM;
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -103,6 +117,7 @@ export function useSettings() {
             surah,
             ayah: clampAyah(surah, parsed.ayah),
             autoplayNextSurah: coerceAutoplayNextSurah(parsed.autoplayNextSurah),
+            backgroundDim: coerceBackgroundDim(parsed.backgroundDim),
           });
         }
       } catch {
@@ -133,6 +148,8 @@ export function useSettings() {
     setSettings((s) => ({ ...s, ambientVolume: clampVolume(ambientVolume) }));
   const setAutoplayNextSurah = (autoplayNextSurah: boolean) =>
     setSettings((s) => ({ ...s, autoplayNextSurah }));
+  const setBackgroundDim = (backgroundDim: boolean) =>
+    setSettings((s) => ({ ...s, backgroundDim }));
 
   /**
    * Atomically update both surah and ayah. The ayah is clamped to the new
@@ -164,6 +181,7 @@ export function useSettings() {
     setAmbient,
     setAmbientVolume,
     setAutoplayNextSurah,
+    setBackgroundDim,
     setPosition,
     setAyah,
   };

@@ -70,8 +70,18 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
+  // Both fonts are bundled and must be fully loaded before any Arabic
+  // text renders, otherwise React Native paints with a fallback that
+  // displays missing glyphs as a dotted-circle placeholder. Gating the
+  // tree on `fontsLoaded` (below) guarantees this.
+  //
+  // AmiriQuran is the modern, comprehensive Quranic font (1446 glyphs,
+  // full GPOS mark/mkmk coverage) and is used for the verse text where
+  // mark-positioning bugs were appearing. UthmanicHafs is kept for the
+  // surah-name display in the header where it renders flawlessly.
   const [fontsLoaded, fontError] = useFonts({
     UthmanicHafs: require("../assets/fonts/UthmanicHafs.otf"),
+    AmiriQuran: require("../assets/fonts/AmiriQuran.ttf"),
   });
 
   useEffect(() => {

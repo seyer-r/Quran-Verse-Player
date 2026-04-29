@@ -67,6 +67,7 @@ export default function PlayerScreen() {
     setAmbient,
     setAmbientVolume,
     setAutoplayNextSurah,
+    setBackgroundDim,
     setPosition,
     setAyah: persistAyah,
   } = useSettings();
@@ -774,11 +775,44 @@ export default function PlayerScreen() {
     }
   }, [hasFinished, getPlayer, bundle, pokeControls, grantUserGestureAndStartAmbient]);
 
+  // ------------------------------------------------------------------
+  // Skip throttle. Rapid taps on next / previous used to leave the
+  // player in a desynced state (paused player, isPlaying still true,
+  // controls dead) because each tap fired a fresh pause/seek/play
+  // sequence on top of the previous tap that hadn't yet finished. Two
+  // defenses:
+  //   1. `skipLockRef` ignores any tap that lands within
+  //      SKIP_COOLDOWN_MS of the previous one — single taps still feel
+  //      instant, but a frantic burst is collapsed to one transition.
+  //   2. `indexRef.current` is updated synchronously so the *next*
+  //      allowed tap reads the post-skip index instead of the stale
+  //      pre-skip one (otherwise consecutive valid taps would both
+  //      compute their target from the original index).
+  // ------------------------------------------------------------------
+  const SKIP_COOLDOWN_MS = 220;
+  const skipLockRef = useRef(false);
+  const skipUnlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lockSkip = useCallback(() => {
+    skipLockRef.current = true;
+    if (skipUnlockTimer.current) clearTimeout(skipUnlockTimer.current);
+    skipUnlockTimer.current = setTimeout(() => {
+      skipLockRef.current = false;
+      skipUnlockTimer.current = null;
+    }, SKIP_COOLDOWN_MS);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (skipUnlockTimer.current) clearTimeout(skipUnlockTimer.current);
+    };
+  }, []);
+
   const goPrev = useCallback(() => {
+    if (skipLockRef.current) return;
     pokeControls();
     grantUserGestureAndStartAmbient();
     const cur = indexRef.current;
     if (cur > 0) {
+      lockSkip();
       setHasFinished(false);
       const wasPlaying = isPlayingRef.current;
       const old = bundle.players[cur];
@@ -788,19 +822,29 @@ export default function PlayerScreen() {
       }
       const prev = getPlayer(cur - 1);
       safeSeekZero(prev);
-      if (wasPlaying) safePlay(prev);
+      if (wasPlaying) {
+        safePlay(prev);
+        // Keep React state in lockstep with the player we just kicked
+        // off — a rapid pause/play sequence on the previous player can
+        // briefly emit playing=false on the listener and otherwise leak
+        // into the visible play/pause icon.
+        setIsPlaying(true);
+      }
+      indexRef.current = cur - 1;
       setIndex(cur - 1);
     } else {
       const player = getPlayer(0);
       safeSeekZero(player);
     }
-  }, [getPlayer, bundle, pokeControls]);
+  }, [getPlayer, bundle, pokeControls, lockSkip]);
 
   const goNext = useCallback(() => {
+    if (skipLockRef.current) return;
     pokeControls();
     grantUserGestureAndStartAmbient();
     const cur = indexRef.current;
     if (cur < ayahs.length - 1) {
+      lockSkip();
       setHasFinished(false);
       const wasPlaying = isPlayingRef.current;
       const old = bundle.players[cur];
@@ -810,10 +854,14 @@ export default function PlayerScreen() {
       }
       const next = getPlayer(cur + 1);
       safeSeekZero(next);
-      if (wasPlaying) safePlay(next);
+      if (wasPlaying) {
+        safePlay(next);
+        setIsPlaying(true);
+      }
+      indexRef.current = cur + 1;
       setIndex(cur + 1);
     }
-  }, [getPlayer, bundle, ayahs.length, pokeControls]);
+  }, [getPlayer, bundle, ayahs.length, pokeControls, lockSkip]);
 
   const restart = useCallback(() => {
     pokeControls();
@@ -944,12 +992,22 @@ export default function PlayerScreen() {
         <LinearGradient
           colors={
             hasBg
-              ? [
-                  "rgba(0,0,0,0.55)",
-                  "rgba(0,0,0,0.35)",
-                  "rgba(0,0,0,0.55)",
-                  "rgba(0,0,0,0.85)",
-                ]
+              ? settings.backgroundDim
+                ? [
+                    "rgba(0,0,0,0.55)",
+                    "rgba(0,0,0,0.35)",
+                    "rgba(0,0,0,0.55)",
+                    "rgba(0,0,0,0.85)",
+                  ]
+                : // Dim disabled — let the image shine through. We keep
+                  // a faint bottom vignette so the footer controls and
+                  // reciter label remain legible against bright skies.
+                  [
+                    "rgba(0,0,0,0)",
+                    "rgba(0,0,0,0)",
+                    "rgba(0,0,0,0)",
+                    "rgba(0,0,0,0.55)",
+                  ]
               : ["#000", "#000", "#000", "#000"]
           }
           locations={[0, 0.4, 0.7, 1]}
@@ -1255,12 +1313,14 @@ export default function PlayerScreen() {
         ambient={settings.ambient}
         ambientVolume={settings.ambientVolume}
         autoplayNextSurah={settings.autoplayNextSurah}
+        backgroundDim={settings.backgroundDim}
         sleepTimerMinutes={sleepDurationMin}
         onTransitionChange={setTransition}
         onBackgroundChange={setBackground}
         onAmbientChange={handleAmbientChange}
         onAmbientVolumeChange={handleAmbientVolumeChange}
         onAutoplayNextSurahChange={setAutoplayNextSurah}
+        onBackgroundDimChange={setBackgroundDim}
         onSleepTimerChange={setSleepTimerMinutes}
       />
 
@@ -1368,7 +1428,18 @@ const styles = StyleSheet.create({
   },
   arabic: {
     color: "#fff",
-    fontFamily: "UthmanicHafs",
+    // AmiriQuran is the modern Quranic font with full GPOS mark/mkmk
+    // coverage — it correctly anchors every diacritic (tashkeel) to its
+    // base letter on every platform. The previous KFGQPC font has gaps
+    // in its mark-positioning lookups for some less-common combinations,
+    // which caused diacritics to render on a dotted-circle placeholder.
+    // On web we still pass UthmanicHafs as a secondary so the surah
+    // header (which uses it) isn't visually inconsistent if AmiriQuran
+    // ever fails to load — RN-Web honors comma-list font families.
+    fontFamily: Platform.select({
+      web: "AmiriQuran, UthmanicHafs",
+      default: "AmiriQuran",
+    }),
     textAlign: "center",
     writingDirection: "rtl",
     includeFontPadding: false,

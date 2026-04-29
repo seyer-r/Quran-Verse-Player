@@ -37,12 +37,14 @@ interface SettingsPanelProps {
   ambient: AmbientId;
   ambientVolume: number;
   autoplayNextSurah: boolean;
+  backgroundDim: boolean;
   sleepTimerMinutes: number | null;
   onTransitionChange: (mode: TransitionMode) => void;
   onBackgroundChange: (id: BackgroundId) => void;
   onAmbientChange: (id: AmbientId) => void;
   onAmbientVolumeChange: (vol: number) => void;
   onAutoplayNextSurahChange: (next: boolean) => void;
+  onBackgroundDimChange: (next: boolean) => void;
   onSleepTimerChange: (minutes: number | null) => void;
 }
 
@@ -64,12 +66,14 @@ export function SettingsPanel({
   ambient,
   ambientVolume,
   autoplayNextSurah,
+  backgroundDim,
   sleepTimerMinutes,
   onTransitionChange,
   onBackgroundChange,
   onAmbientChange,
   onAmbientVolumeChange,
   onAutoplayNextSurahChange,
+  onBackgroundDimChange,
   onSleepTimerChange,
 }: SettingsPanelProps) {
   const { width } = useWindowDimensions();
@@ -235,6 +239,39 @@ export function SettingsPanel({
                 );
               })}
             </ScrollView>
+
+            <View style={[styles.group, { marginTop: 14 }]}>
+              <View style={[styles.row, { paddingVertical: 12 }]}>
+                <View style={styles.rowIcon}>
+                  <Feather
+                    name="sun"
+                    size={18}
+                    color={backgroundDim ? "#737373" : "#f5f5f5"}
+                  />
+                </View>
+                <View style={styles.rowTextWrap}>
+                  <Text
+                    style={[
+                      styles.rowLabel,
+                      !backgroundDim && styles.rowLabelSelected,
+                    ]}
+                  >
+                    Dim background
+                  </Text>
+                  <Text style={styles.rowSubLabel}>
+                    Adds a dark overlay so the verse stays readable. Turn off
+                    to see the image at full brightness.
+                  </Text>
+                </View>
+                <View style={styles.rowAccessory}>
+                  <ToggleSwitch
+                    value={backgroundDim}
+                    onValueChange={onBackgroundDimChange}
+                    accessibilityLabel="Dim background"
+                  />
+                </View>
+              </View>
+            </View>
 
             {/* === AMBIENT SOUND === */}
             <SectionHeader title="Ambient sound" style={{ marginTop: 28 }} />
