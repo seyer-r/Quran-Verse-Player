@@ -30,7 +30,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SurahPicker } from "@/components/SurahPicker";
-import { getAmbient } from "@/data/ambient";
+import { AMBIENT_OPTIONS, type AmbientId, getAmbient } from "@/data/ambient";
 import { getBackground } from "@/data/backgrounds";
 import {
   ayahMarker,
@@ -297,9 +297,15 @@ export default function PlayerScreen() {
   // render — under React 18 StrictMode the render runs twice and we'd leak
   // the first AudioPlayer instance.)
 
-  // === Ambient player (independent — keeps looping while recitation plays) ===
-  const ambientPlayerRef = useRef<AudioPlayer | null>(null);
-  const currentAmbientRef = useRef<string>("off");
+  // === Ambient players ===
+  // We pre-create one persistent AudioPlayer per ambient sound on first mount.
+  // Switching ambient sounds then becomes "pause old, play new" with no
+  // construction/load delay (the previous "create player on demand" approach
+  // had a noticeable ~1s gap between selection and audio starting). Holding
+  // all five players also makes the volume slider behave reliably — the
+  // volume effect can apply the new value to every existing player rather
+  // than racing with player creation.
+  const ambientPlayersRef = useRef<Partial<Record<AmbientId, AudioPlayer>>>({});
 
   const stageOpacity = useRef(new Animated.Value(1)).current;
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -485,77 +491,124 @@ export default function PlayerScreen() {
     persistAyah(index + 1);
   }, [index, hydrated, persistAyah]);
 
-  // Tracks whether the user has tapped play at least once. Browsers block
-  // HTMLAudioElement.play() with NotAllowedError unless there's an active
-  // user-gesture grant, so on web we defer ambient autoplay until that
-  // first tap. On native this is a no-op.
+  // Tracks whether the user has tapped *anything* (play / next / settings /
+  // volume / picker) at least once. Browsers reject HTMLAudioElement.play()
+  // with NotAllowedError unless there's an active user-gesture grant, so on
+  // web we defer ambient autoplay until that first tap. On native this is a
+  // no-op (initialised true).
   const userGestureGrantedRef = useRef(Platform.OS !== "web");
 
-  // === Ambient audio: load + (re)build the player only when the SOURCE
-  // changes. Volume changes are handled by a separate effect below so a
-  // user dragging the volume slider can't tear down and rebuild the player
-  // mid-drag. ===
+  // Pre-create every ambient player ONCE so switching sounds is instant and
+  // the volume slider always has a player to apply to.
   useEffect(() => {
-    const opt = getAmbient(settings.ambient);
-
-    if (currentAmbientRef.current === opt.id) return;
-
-    try {
-      ambientPlayerRef.current?.remove();
-    } catch {}
-    ambientPlayerRef.current = null;
-    currentAmbientRef.current = opt.id;
-
-    if (!opt.source) return;
-
-    try {
-      const p = createAudioPlayer(opt.source);
+    for (const opt of AMBIENT_OPTIONS) {
+      if (!opt.source) continue;
+      if (ambientPlayersRef.current[opt.id]) continue;
       try {
-        p.loop = true;
+        const p = createAudioPlayer(opt.source);
+        try {
+          p.loop = true;
+          p.volume = settings.ambientVolume;
+        } catch {}
+        ambientPlayersRef.current[opt.id] = p;
+      } catch (err) {
+        if (__DEV__)
+          console.warn(`[audio] ambient pre-create failed (${opt.id}):`, err);
+      }
+    }
+    return () => {
+      for (const id of Object.keys(ambientPlayersRef.current) as AmbientId[]) {
+        try {
+          ambientPlayersRef.current[id]?.remove();
+        } catch {}
+        delete ambientPlayersRef.current[id];
+      }
+    };
+    // settings.ambientVolume intentionally not a dep — initial volume only;
+    // subsequent volume changes are handled by the dedicated volume effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Switch which ambient is playing. Pause every other player; play the
+  // selected one. Runs whenever the user picks a new ambient *and* once
+  // settings hydrate from storage.
+  useEffect(() => {
+    if (!hydrated) return;
+    for (const id of Object.keys(ambientPlayersRef.current) as AmbientId[]) {
+      const p = ambientPlayersRef.current[id];
+      if (!p) continue;
+      if (id === settings.ambient) continue;
+      try {
+        p.pause();
+      } catch {}
+    }
+    if (settings.ambient === "off") return;
+    const p = ambientPlayersRef.current[settings.ambient];
+    if (p && userGestureGrantedRef.current) {
+      try {
         p.volume = settings.ambientVolume;
       } catch {}
-      ambientPlayerRef.current = p;
-      // Only auto-play ambient if we already have an active user-gesture
-      // grant (always on native, only after first play tap on web).
-      if (userGestureGrantedRef.current) {
-        safePlay(p);
-      }
-    } catch (err) {
-      if (__DEV__) console.warn("[audio] ambient createAudioPlayer failed:", err);
+      safePlay(p);
     }
-    // settings.ambientVolume is intentionally NOT in deps — see the
-    // dedicated volume effect below.
+    // ambientVolume intentionally not in deps — handled by volume effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.ambient]);
+  }, [settings.ambient, hydrated]);
 
-  // === Ambient volume — cheap, just sets a property on the existing player. ===
+  // Volume — apply to ALL pre-created players so it always lands on the
+  // currently-playing one even if the player ref hasn't been re-read yet.
   useEffect(() => {
-    const p = ambientPlayerRef.current;
-    if (!p) return;
-    try {
-      p.volume = settings.ambientVolume;
-    } catch (err) {
-      if (__DEV__) console.warn("[audio] ambient volume set failed:", err);
+    for (const p of Object.values(ambientPlayersRef.current)) {
+      if (!p) continue;
+      try {
+        p.volume = settings.ambientVolume;
+      } catch (err) {
+        if (__DEV__) console.warn("[audio] ambient volume set failed:", err);
+      }
     }
   }, [settings.ambientVolume]);
 
-  useEffect(() => {
-    return () => {
-      try {
-        ambientPlayerRef.current?.remove();
-      } catch {}
-    };
-  }, []);
-
-  // On web, the FIRST togglePlay call is the user gesture that unlocks
-  // audio playback. Once granted, kick off the ambient player too (it may
-  // have been deferred when the ambient source effect ran).
+  // On web, the FIRST user-driven action is the gesture that unlocks
+  // audio playback. Once granted, kick off the currently-selected ambient
+  // player too (it may have been deferred when the ambient effect ran on
+  // hydration).
   const grantUserGestureAndStartAmbient = useCallback(() => {
     if (userGestureGrantedRef.current) return;
     userGestureGrantedRef.current = true;
-    const a = ambientPlayerRef.current;
+    if (settings.ambient === "off") return;
+    const a = ambientPlayersRef.current[settings.ambient];
     if (a) safePlay(a);
-  }, []);
+  }, [settings.ambient]);
+
+  // Wrap the ambient setters so that picking a sound (or nudging the volume)
+  // counts as the user gesture that unlocks web audio AND triggers playback
+  // immediately — even if recitation has never been started. This is what
+  // the user expects from "select rain, hear rain".
+  const handleAmbientChange = useCallback(
+    (id: AmbientId) => {
+      grantUserGestureAndStartAmbient();
+      // The source effect handles play/pause once the new value lands in
+      // state. We just need to make sure the gesture grant has fired by
+      // then so the safePlay inside the effect actually runs on web.
+      setAmbient(id);
+    },
+    [grantUserGestureAndStartAmbient, setAmbient],
+  );
+
+  const handleAmbientVolumeChange = useCallback(
+    (vol: number) => {
+      // Tapping a volume bar is itself a user gesture — flip the grant so
+      // ambient (which may have been silent because the user hadn't tapped
+      // play yet) starts playing now.
+      const wasGranted = userGestureGrantedRef.current;
+      userGestureGrantedRef.current = true;
+      setAmbientVolume(vol);
+      if (!wasGranted && settings.ambient !== "off") {
+        const a = ambientPlayersRef.current[settings.ambient];
+        if (a) safePlay(a);
+      }
+    },
+    [setAmbientVolume, settings.ambient],
+  );
 
   const togglePlay = useCallback(() => {
     pokeControls();
@@ -811,9 +864,17 @@ export default function PlayerScreen() {
             </View>
           </TouchableOpacity>
           <View style={styles.headerRight}>
+            <Text
+              style={styles.surahArabic}
+              allowFontScaling={false}
+              numberOfLines={1}
+            >
+              {surah.nameArabic}
+            </Text>
             <TouchableOpacity
               onPress={() => {
                 pokeControls();
+                grantUserGestureAndStartAmbient();
                 setSettingsOpen(true);
               }}
               accessibilityLabel="Settings"
@@ -823,13 +884,6 @@ export default function PlayerScreen() {
             >
               <Feather name="settings" size={20} color="#d4d4d4" />
             </TouchableOpacity>
-            <Text
-              style={styles.surahArabic}
-              allowFontScaling={false}
-              numberOfLines={1}
-            >
-              {surah.nameArabic}
-            </Text>
           </View>
         </Animated.View>
 
@@ -1034,8 +1088,8 @@ export default function PlayerScreen() {
         ambientVolume={settings.ambientVolume}
         onTransitionChange={setTransition}
         onBackgroundChange={setBackground}
-        onAmbientChange={setAmbient}
-        onAmbientVolumeChange={setAmbientVolume}
+        onAmbientChange={handleAmbientChange}
+        onAmbientVolumeChange={handleAmbientVolumeChange}
       />
 
       <SurahPicker
