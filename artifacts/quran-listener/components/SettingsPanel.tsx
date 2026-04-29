@@ -37,12 +37,22 @@ interface SettingsPanelProps {
   ambient: AmbientId;
   ambientVolume: number;
   autoplayNextSurah: boolean;
+  sleepTimerMinutes: number | null;
   onTransitionChange: (mode: TransitionMode) => void;
   onBackgroundChange: (id: BackgroundId) => void;
   onAmbientChange: (id: AmbientId) => void;
   onAmbientVolumeChange: (vol: number) => void;
   onAutoplayNextSurahChange: (next: boolean) => void;
+  onSleepTimerChange: (minutes: number | null) => void;
 }
+
+const SLEEP_OPTIONS: { label: string; minutes: number | null }[] = [
+  { label: "Off", minutes: null },
+  { label: "10 min", minutes: 10 },
+  { label: "20 min", minutes: 20 },
+  { label: "30 min", minutes: 30 },
+  { label: "1 hour", minutes: 60 },
+];
 
 const ANIM_MS = 280;
 
@@ -54,11 +64,13 @@ export function SettingsPanel({
   ambient,
   ambientVolume,
   autoplayNextSurah,
+  sleepTimerMinutes,
   onTransitionChange,
   onBackgroundChange,
   onAmbientChange,
   onAmbientVolumeChange,
   onAutoplayNextSurahChange,
+  onSleepTimerChange,
 }: SettingsPanelProps) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -329,6 +341,47 @@ export function SettingsPanel({
                 </View>
               </View>
             </View>
+
+            {/* === SLEEP TIMER === */}
+            <SectionHeader title="Sleep timer" style={{ marginTop: 28 }} />
+            <View style={styles.group}>
+              {SLEEP_OPTIONS.map((opt, i) => {
+                const selected = opt.minutes === sleepTimerMinutes;
+                const isLast = i === SLEEP_OPTIONS.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={opt.label}
+                    onPress={() => onSleepTimerChange(opt.minutes)}
+                    activeOpacity={0.6}
+                    style={[styles.row, !isLast && styles.rowDivider]}
+                  >
+                    <View style={styles.rowIcon}>
+                      <Feather
+                        name={opt.minutes == null ? "slash" : "moon"}
+                        size={18}
+                        color={selected ? "#f5f5f5" : "#737373"}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.rowLabel,
+                        selected && styles.rowLabelSelected,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                    <View style={styles.rowAccessory}>
+                      {selected && (
+                        <Feather name="check" size={18} color="#e8c078" />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.sleepHint}>
+              Audio fades out and pauses when the timer ends.
+            </Text>
 
             {/* === VERSE TRANSITION === */}
             <SectionHeader title="Verse transition" style={{ marginTop: 28 }} />
@@ -635,6 +688,14 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: "rgba(255,255,255,0.10)",
     borderRadius: 6,
+  },
+
+  sleepHint: {
+    marginTop: 10,
+    marginLeft: 4,
+    fontSize: 12,
+    color: "#737373",
+    lineHeight: 18,
   },
 
   // Toggle switch

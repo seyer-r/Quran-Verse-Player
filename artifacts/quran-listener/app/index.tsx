@@ -48,6 +48,13 @@ import { useSettings } from "@/lib/useSettings";
 // + Ayah counter. (Al-Baqarah has 286 ayahs.)
 const SEGMENTED_PROGRESS_MAX = 30;
 
+function formatRemaining(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 export default function PlayerScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -115,6 +122,17 @@ export default function PlayerScreen() {
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const HIDE_DELAY_MS = 3500;
 
+  // ------------------------------------------------------------------
+  // Sleep timer — one-shot session-only timer. The user picks 10 / 20 /
+  // 30 / 60 minutes from the settings panel; we capture the absolute
+  // wall-clock expiry, gently fade the recitation + ambient player
+  // volumes to zero in the final ~4 seconds, then pause everything and
+  // restore the base volumes so the next playback is at full level.
+  // ------------------------------------------------------------------
+  const [sleepExpiresAt, setSleepExpiresAt] = useState<number | null>(null);
+  const [sleepRemainingMs, setSleepRemainingMs] = useState<number>(0);
+  const [sleepDurationMin, setSleepDurationMin] = useState<number | null>(null);
+
   const indexRef = useRef(index);
   const isPlayingRef = useRef(isPlaying);
   const settingsOpenRef = useRef(settingsOpen);
@@ -160,9 +178,14 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [scheduleHide]);
 
-  // pokeControls already does what we want for "tap anywhere": show the
-  // chrome and reset the auto-hide timer. We never hide on tap — auto-hide
-  // is the only way the chrome disappears.
+  // Tap on the empty stage / verse area: TOGGLE the chrome. This is what
+  // the user expects from a video-player-style overlay — tap once to
+  // reveal, tap again to hide. Distinct from `pokeControls`, which is
+  // called from the controls themselves (play / next / picker / …) and
+  // must always show, never hide, so the user sees feedback.
+  const tapBackground = useCallback(() => {
+    setChromeVisible((v) => !v);
+  }, []);
 
   useEffect(() => {
     Animated.timing(chromeOpacity, {
@@ -315,6 +338,89 @@ export default function PlayerScreen() {
   // volume effect can apply the new value to every existing player rather
   // than racing with player creation.
   const ambientPlayersRef = useRef<Partial<Record<AmbientId, AudioPlayer>>>({});
+
+  // Sleep timer tick — runs only while a timer is active. Updates the
+  // displayed countdown every 250 ms; smoothly fades all audio in the
+  // final 4 s; pauses everything and clears itself on expiry. Cleanup
+  // restores the base volumes if the user cancels mid-fade so audio
+  // resumes at full level next time.
+  useEffect(() => {
+    if (sleepExpiresAt == null) {
+      setSleepRemainingMs(0);
+      return;
+    }
+
+    const FADE_MS = 4000;
+    const baseAmbient = settings.ambientVolume;
+    let cancelled = false;
+
+    const applyVolume = (factor: number) => {
+      const recit = bundle.players[indexRef.current];
+      if (recit) {
+        try {
+          recit.volume = factor;
+        } catch {}
+      }
+      if (settings.ambient !== "off") {
+        const a = ambientPlayersRef.current[settings.ambient];
+        if (a) {
+          try {
+            a.volume = baseAmbient * factor;
+          } catch {}
+        }
+      }
+    };
+
+    const tick = () => {
+      if (cancelled) return;
+      const now = Date.now();
+      const remaining = sleepExpiresAt - now;
+      if (remaining <= 0) {
+        const recit = bundle.players[indexRef.current];
+        if (recit) safePause(recit);
+        if (settings.ambient !== "off") {
+          const a = ambientPlayersRef.current[settings.ambient];
+          if (a) safePause(a);
+        }
+        applyVolume(1);
+        setIsPlaying(false);
+        setSleepRemainingMs(0);
+        setSleepExpiresAt(null);
+        setSleepDurationMin(null);
+        return;
+      }
+      if (remaining <= FADE_MS) {
+        applyVolume(Math.max(0, remaining / FADE_MS));
+      }
+      setSleepRemainingMs(remaining);
+    };
+
+    // Run once immediately so the chip shows the correct time, then poll.
+    tick();
+    const id = setInterval(tick, 250);
+
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      // Restore base volumes if the timer was cancelled mid-fade.
+      applyVolume(1);
+    };
+    // We intentionally leave bundle/ambient out of deps — the tick reads
+    // them via refs/closure on each fire and re-running this effect would
+    // reset the fade. The deps that *do* matter are the timer expiry and
+    // the chosen ambient + base volume so a fresh fade uses correct values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sleepExpiresAt, settings.ambient, settings.ambientVolume]);
+
+  const setSleepTimerMinutes = useCallback((minutes: number | null) => {
+    if (minutes == null) {
+      setSleepExpiresAt(null);
+      setSleepDurationMin(null);
+      return;
+    }
+    setSleepDurationMin(minutes);
+    setSleepExpiresAt(Date.now() + minutes * 60_000);
+  }, []);
 
   const stageOpacity = useRef(new Animated.Value(1)).current;
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -861,7 +967,7 @@ export default function PlayerScreen() {
           the chrome and resets the auto-hide timer. === */}
       <Pressable
         style={styles.pressArea}
-        onPress={pokeControls}
+        onPress={tapBackground}
         android_disableSound
       >
         {/* === Header === */}
@@ -983,7 +1089,7 @@ export default function PlayerScreen() {
                   keyboardShouldPersistTaps="always"
                 >
                   <Pressable
-                    onPress={pokeControls}
+                    onPress={tapBackground}
                     android_disableSound
                     style={styles.verseInner}
                   >
@@ -1020,6 +1126,20 @@ export default function PlayerScreen() {
           ]}
           pointerEvents={chromeVisible ? "auto" : "none"}
         >
+          {sleepExpiresAt != null && (
+            <TouchableOpacity
+              onPress={() => setSleepTimerMinutes(null)}
+              activeOpacity={0.7}
+              style={styles.sleepChip}
+              accessibilityLabel="Cancel sleep timer"
+              hitSlop={6}
+            >
+              <Feather name="moon" size={11} color="#e8c078" />
+              <Text style={styles.sleepChipText}>
+                SLEEP IN {formatRemaining(sleepRemainingMs)}
+              </Text>
+            </TouchableOpacity>
+          )}
           {ayahs.length <= SEGMENTED_PROGRESS_MAX ? (
             <View style={styles.progressRow}>
               {ayahs.map((a, i) => {
@@ -1135,11 +1255,13 @@ export default function PlayerScreen() {
         ambient={settings.ambient}
         ambientVolume={settings.ambientVolume}
         autoplayNextSurah={settings.autoplayNextSurah}
+        sleepTimerMinutes={sleepDurationMin}
         onTransitionChange={setTransition}
         onBackgroundChange={setBackground}
         onAmbientChange={handleAmbientChange}
         onAmbientVolumeChange={handleAmbientVolumeChange}
         onAutoplayNextSurahChange={setAutoplayNextSurah}
+        onSleepTimerChange={setSleepTimerMinutes}
       />
 
       <SurahPicker
@@ -1275,6 +1397,25 @@ const styles = StyleSheet.create({
   },
   singleProgressRow: {
     marginBottom: 18,
+  },
+  sleepChip: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(232,192,120,0.10)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(232,192,120,0.35)",
+    marginBottom: 12,
+  },
+  sleepChipText: {
+    fontSize: 10,
+    letterSpacing: 2,
+    color: "#e8c078",
+    fontWeight: "600",
   },
   progressTrack: {
     flex: 1,
