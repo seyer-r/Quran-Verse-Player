@@ -1,0 +1,95 @@
+Okay I’ve read everything including the error logs. You have three distinct bugs. Let me break them all down.
+
+Bug 1: setAudioModeAsync is async but not awaited
+This is your core glitch. In index.tsx, three effects all fire at the same time on mount:
+
+Effect 1: setAudioModeAsync({ mixWithOthers }) — starts but hasn't finished
+Effect 2: ambient player created and safePlay() called
+Effect 3: recitation player created
+
+
+By the time the players start, iOS hasn’t been told to mix yet. The ambient player grabs an exclusive audio session first, and the recitation gets blocked. The fix is to move setAudioModeAsync to _layout.tsx so it runs before the screen even renders:
+
+// _layout.tsx — add this before the return
+useEffect(() => {
+  setAudioModeAsync({
+    playsInSilentMode: true,
+    shouldPlayInBackground: true,
+    interruptionMode: "mixWithOthers",
+    allowsRecording: false,
+    shouldRouteThroughEarpiece: false,
+  });
+}, []);
+
+
+Then remove it from index.tsx entirely.
+
+Bug 2: Web autoplay policy crash
+The second error log says: “The request is not allowed by the user agent” — this is the browser’s autoplay policy. The ambient player calls safePlay(p) on mount with no user gesture, which browsers block outright.
+In your ambient effect, the ambient auto-starts from saved settings. On web you need to defer that play call until after the user has interacted. Wrap the ambient safePlay like this:
+
+// In the ambient useEffect, replace safePlay(p) with:
+if (Platform.OS !== "web") {
+  safePlay(p);
+} else {
+  // On web, ambient only starts once user taps play
+  // Store the player but don't call play() yet
+  ambientPlayerRef.current = p;
+  return; // don't call safePlay
+}
+
+
+Then in togglePlay, after safePlay(player) for the recitation, also kick off ambient if it exists:
+
+const togglePlay = useCallback(() => {
+  // ... existing logic ...
+  if (Platform.OS === "web" && ambientPlayerRef.current) {
+    safePlay(ambientPlayerRef.current);
+  }
+}, [...]);
+
+
+Bug 3: createAudioPlayer constructor argument mismatch
+The first error log says: “Received 4 arguments, but 3 was expected” at the native AudioPlayer constructor. This is a bug inside expo-audio@1.1.1 itself — the JS wrapper passes an extra argument to the native constructor in this version.
+Check what’s actually installed:
+
+cat node_modules/expo-audio/package.json | grep '"version"'
+
+
+If it’s 1.1.1, pin it to 1.1.0 in your package.json:
+
+"dependencies": {
+  "expo-audio": "1.1.0"
+}
+
+
+Then run pnpm install to lock it down.
+
+Bonus: Ambient effect dependency split
+Your ambient effect has this dep array:
+
+}, [settings.ambient, settings.ambientVolume]);
+
+
+When only volume changes, the early return handles it correctly. But if the user is rapidly sliding the volume and settings.ambient is also changing, you can get a race where the player gets removed and recreated mid-slide. Split them into two effects:
+
+// Effect 1: only runs when the sound SOURCE changes
+useEffect(() => {
+  const opt = getAmbient(settings.ambient);
+  // ... all the player creation / teardown logic ...
+}, [settings.ambient]);
+
+// Effect 2: only runs when volume changes
+useEffect(() => {
+  const p = ambientPlayerRef.current;
+  if (p) {
+    try { p.volume = settings.ambientVolume; } catch {}
+  }
+}, [settings.ambientVolume]);
+
+
+Priority order to fix
+	1.	Move setAudioModeAsync to _layout.tsx — this alone will likely fix the recitation not starting
+	2.	Pin expo-audio to 1.1.0 — fixes the constructor crash
+	3.	Add Platform.OS !== "web" guard on ambient autoplay — fixes the web error
+	4.	Split the ambient effect deps — cleanup, prevents future edge cases​​​​​​​​​​​​​​​​

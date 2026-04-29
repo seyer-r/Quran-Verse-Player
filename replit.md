@@ -54,7 +54,16 @@ The longest ayah in the Quran (Al-Baqarah 282, ~1500 Arabic chars) cannot fit on
 Line-height is also tightened from 1.9× to 1.7× / 1.55× for medium / long ayahs so vertical stacking doesn't push content off-screen before the font shrink can help.
 
 ### Audio interruption (recitation + ambient must coexist)
-expo-audio's default `interruptionMode` requests exclusive audio focus per player, so creating the ambient (rain / ocean / etc) player kicks the Quran recitation off mid-verse. Fix: `setAudioModeAsync({ ..., interruptionMode: 'mixWithOthers' })` is set once on mount in `app/index.tsx`. Both players now share the audio session and play simultaneously.
+expo-audio's default `interruptionMode` requests exclusive audio focus per player, so creating the ambient (rain / ocean / etc) player kicks the Quran recitation off mid-verse. Fix: `setAudioModeAsync({ ..., interruptionMode: 'mixWithOthers' })` is called at **module scope in `app/_layout.tsx`** — NOT inside a `useEffect` in the player screen. If you put it in the screen, it races with the player constructors that fire on the same render and on iOS the first player to load grabs an exclusive audio session before the mode change takes effect. Both players now share the audio session and play simultaneously.
+
+### expo-audio version pin (1.1.0)
+Pinned to **`expo-audio: "1.1.0"`** in `artifacts/quran-listener/package.json`. Version `1.1.1` ships a JS wrapper that passes 4 arguments to the native `AudioPlayer` constructor when the native side only accepts 3 — the player crashes immediately on construction. Do NOT bump back to `^1.1.x` without first verifying that the constructor arg-count mismatch is fixed upstream. Expo's "expected version" warning at startup is safe to ignore for this package.
+
+### Web autoplay policy (browser-only)
+Browsers block `HTMLAudioElement.play()` with `NotAllowedError` unless an active user-gesture grant exists. The ambient player normally auto-starts from saved settings on mount, which fails on web. Fix in `app/index.tsx`: a `userGestureGrantedRef` (initialised to `true` on native, `false` on web) gates the ambient `safePlay()` call. Every user-driven control (`togglePlay`, `goPrev`, `goNext`, `restart`, `handlePickPosition`) calls `grantUserGestureAndStartAmbient()` — the first such call flips the flag and kicks off the deferred ambient player. The ambient effect itself only auto-plays the freshly-created player when the flag is already true.
+
+### Ambient effect — split source vs volume
+The ambient effect is split into two `useEffect`s in `app/index.tsx`: one keyed on `settings.ambient` rebuilds/tears down the player, the other keyed on `settings.ambientVolume` just sets `player.volume` on the existing player. This prevents the volume slider from tearing down and recreating the player mid-drag.
 
 ### Picker auto-play
 The surah/ayah picker's primary CTA reads "Listen from ayah N", so it must start playback on confirm — previously it required an extra tap on the play button. `handlePickPosition` now plays immediately for same-surah picks (the bundle is already mounted) and uses a `shouldAutoPlayRef` flag for cross-surah picks (the audio listener effect re-attaches after the bundle rebuild and starts playback once the new player exists).

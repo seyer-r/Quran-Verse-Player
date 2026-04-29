@@ -1,3 +1,4 @@
+import { setAudioModeAsync } from "expo-audio";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -9,6 +10,21 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
+
+// Configure the global audio session BEFORE any player is constructed.
+// This must live in the root layout (not the player screen) so it fires
+// before the recitation/ambient players initialize on iOS — otherwise
+// the first player to load grabs an exclusive audio session and the
+// `mixWithOthers` mode set later doesn't apply to it.
+setAudioModeAsync({
+  playsInSilentMode: true,
+  shouldPlayInBackground: true,
+  interruptionMode: "mixWithOthers",
+  allowsRecording: false,
+  shouldRouteThroughEarpiece: false,
+}).catch((err) => {
+  if (__DEV__) console.warn("[audio] setAudioModeAsync failed:", err);
+});
 
 // Browsers reject HTMLAudioElement.play() with NotAllowedError when the
 // caller doesn't have an active user-gesture grant (autoplay policy). On

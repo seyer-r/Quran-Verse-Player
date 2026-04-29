@@ -326,23 +326,12 @@ export default function PlayerScreen() {
   }, [settings.background, activeBg, bgFade]);
   const activeBgOpt = getBackground(activeBg);
 
-  // Audio session: play in silent mode, continue in the background, and
-  // critically — `interruptionMode: 'mixWithOthers'` so the recitation
-  // player and the ambient (rain / ocean / etc) player can play SIMULTANEOUSLY.
-  // Without this, expo-audio's default behaviour grabs an exclusive audio
-  // focus session per player and the ambient player kicks the recitation
-  // off mid-verse.
-  useEffect(() => {
-    setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: true,
-      interruptionMode: "mixWithOthers",
-      allowsRecording: false,
-      shouldRouteThroughEarpiece: false,
-    }).catch((err) => {
-      if (__DEV__) console.warn("[audio] setAudioModeAsync failed:", err);
-    });
-  }, []);
+  // (Audio session — `playsInSilentMode`, `shouldPlayInBackground`,
+  //  `interruptionMode: 'mixWithOthers'` — is configured at module scope in
+  //  `app/_layout.tsx`. Doing it here would race with the ambient/recitation
+  //  player constructors that fire on the same render and on iOS the first
+  //  player to load grabs an exclusive audio session before the mode change
+  //  takes effect.)
 
   // Set true by handlePickPosition when the user just confirmed an ayah
   // and we want to start playback as soon as the new bundle's listener
@@ -496,19 +485,20 @@ export default function PlayerScreen() {
     persistAyah(index + 1);
   }, [index, hydrated, persistAyah]);
 
-  // === Ambient audio: load when option changes, keep looping. ===
+  // Tracks whether the user has tapped play at least once. Browsers block
+  // HTMLAudioElement.play() with NotAllowedError unless there's an active
+  // user-gesture grant, so on web we defer ambient autoplay until that
+  // first tap. On native this is a no-op.
+  const userGestureGrantedRef = useRef(Platform.OS !== "web");
+
+  // === Ambient audio: load + (re)build the player only when the SOURCE
+  // changes. Volume changes are handled by a separate effect below so a
+  // user dragging the volume slider can't tear down and rebuild the player
+  // mid-drag. ===
   useEffect(() => {
     const opt = getAmbient(settings.ambient);
 
-    if (currentAmbientRef.current === opt.id) {
-      const p = ambientPlayerRef.current;
-      if (p) {
-        try {
-          p.volume = settings.ambientVolume;
-        } catch {}
-      }
-      return;
-    }
+    if (currentAmbientRef.current === opt.id) return;
 
     try {
       ambientPlayerRef.current?.remove();
@@ -524,10 +514,30 @@ export default function PlayerScreen() {
         p.loop = true;
         p.volume = settings.ambientVolume;
       } catch {}
-      safePlay(p);
       ambientPlayerRef.current = p;
-    } catch {}
-  }, [settings.ambient, settings.ambientVolume]);
+      // Only auto-play ambient if we already have an active user-gesture
+      // grant (always on native, only after first play tap on web).
+      if (userGestureGrantedRef.current) {
+        safePlay(p);
+      }
+    } catch (err) {
+      if (__DEV__) console.warn("[audio] ambient createAudioPlayer failed:", err);
+    }
+    // settings.ambientVolume is intentionally NOT in deps — see the
+    // dedicated volume effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.ambient]);
+
+  // === Ambient volume — cheap, just sets a property on the existing player. ===
+  useEffect(() => {
+    const p = ambientPlayerRef.current;
+    if (!p) return;
+    try {
+      p.volume = settings.ambientVolume;
+    } catch (err) {
+      if (__DEV__) console.warn("[audio] ambient volume set failed:", err);
+    }
+  }, [settings.ambientVolume]);
 
   useEffect(() => {
     return () => {
@@ -537,8 +547,19 @@ export default function PlayerScreen() {
     };
   }, []);
 
+  // On web, the FIRST togglePlay call is the user gesture that unlocks
+  // audio playback. Once granted, kick off the ambient player too (it may
+  // have been deferred when the ambient source effect ran).
+  const grantUserGestureAndStartAmbient = useCallback(() => {
+    if (userGestureGrantedRef.current) return;
+    userGestureGrantedRef.current = true;
+    const a = ambientPlayerRef.current;
+    if (a) safePlay(a);
+  }, []);
+
   const togglePlay = useCallback(() => {
     pokeControls();
+    grantUserGestureAndStartAmbient();
     if (hasFinished) {
       setHasFinished(false);
       for (const p of bundle.players) {
@@ -560,10 +581,11 @@ export default function PlayerScreen() {
       safePlay(player);
       setIsPlaying(true);
     }
-  }, [hasFinished, getPlayer, bundle, pokeControls]);
+  }, [hasFinished, getPlayer, bundle, pokeControls, grantUserGestureAndStartAmbient]);
 
   const goPrev = useCallback(() => {
     pokeControls();
+    grantUserGestureAndStartAmbient();
     const cur = indexRef.current;
     if (cur > 0) {
       setHasFinished(false);
@@ -585,6 +607,7 @@ export default function PlayerScreen() {
 
   const goNext = useCallback(() => {
     pokeControls();
+    grantUserGestureAndStartAmbient();
     const cur = indexRef.current;
     if (cur < ayahs.length - 1) {
       setHasFinished(false);
@@ -603,6 +626,7 @@ export default function PlayerScreen() {
 
   const restart = useCallback(() => {
     pokeControls();
+    grantUserGestureAndStartAmbient();
     setHasFinished(false);
     const cur = indexRef.current;
     const old = bundle.players[cur];
@@ -628,6 +652,7 @@ export default function PlayerScreen() {
   // so the user expects audio).
   const handlePickPosition = useCallback(
     (surahNumber: number, ayahNumber: number) => {
+      grantUserGestureAndStartAmbient();
       // Stop the currently-playing ayah so we don't bleed audio.
       const oldPlayer = bundle.players[indexRef.current];
       if (oldPlayer) {
