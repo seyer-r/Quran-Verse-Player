@@ -32,7 +32,7 @@ task = "shell.exec"
 args = "PORT=22069 pnpm --filter @workspace/quran-listener run dev"
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [postMerge]
