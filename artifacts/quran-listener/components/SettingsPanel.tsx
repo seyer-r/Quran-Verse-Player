@@ -28,6 +28,7 @@ import {
   TRANSITIONS,
   type TransitionMode,
 } from "@/lib/transitions";
+import { ARABIC_FONTS, type ArabicFontId } from "@/lib/useSettings";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -38,6 +39,7 @@ interface SettingsPanelProps {
   ambientVolume: number;
   autoplayNextSurah: boolean;
   backgroundDim: boolean;
+  arabicFont: ArabicFontId;
   sleepTimerMinutes: number | null;
   onTransitionChange: (mode: TransitionMode) => void;
   onBackgroundChange: (id: BackgroundId) => void;
@@ -45,6 +47,7 @@ interface SettingsPanelProps {
   onAmbientVolumeChange: (vol: number) => void;
   onAutoplayNextSurahChange: (next: boolean) => void;
   onBackgroundDimChange: (next: boolean) => void;
+  onArabicFontChange: (id: ArabicFontId) => void;
   onSleepTimerChange: (minutes: number | null) => void;
 }
 
@@ -67,6 +70,7 @@ export function SettingsPanel({
   ambientVolume,
   autoplayNextSurah,
   backgroundDim,
+  arabicFont,
   sleepTimerMinutes,
   onTransitionChange,
   onBackgroundChange,
@@ -74,6 +78,7 @@ export function SettingsPanel({
   onAmbientVolumeChange,
   onAutoplayNextSurahChange,
   onBackgroundDimChange,
+  onArabicFontChange,
   onSleepTimerChange,
 }: SettingsPanelProps) {
   const { width } = useWindowDimensions();
@@ -271,6 +276,73 @@ export function SettingsPanel({
                   />
                 </View>
               </View>
+            </View>
+
+            {/* === ARABIC FONT === */}
+            <SectionHeader
+              title="Arabic font"
+              style={{ marginTop: 28 }}
+            />
+            <View style={styles.group}>
+              {ARABIC_FONTS.map((opt, i) => {
+                const selected = opt.id === arabicFont;
+                const isLast = i === ARABIC_FONTS.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={opt.id}
+                    onPress={() => onArabicFontChange(opt.id)}
+                    activeOpacity={0.6}
+                    style={[
+                      styles.row,
+                      !isLast && styles.rowDivider,
+                      { paddingVertical: 14 },
+                    ]}
+                  >
+                    <View style={styles.rowIcon}>
+                      <Feather
+                        name="type"
+                        size={18}
+                        color={selected ? "#f5f5f5" : "#737373"}
+                      />
+                    </View>
+                    <View style={styles.rowTextWrap}>
+                      <Text
+                        style={[
+                          styles.rowLabel,
+                          selected && styles.rowLabelSelected,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                      <Text style={styles.rowSubLabel}>
+                        {opt.description}
+                      </Text>
+                      {/* Live in-its-own-font preview so the user can
+                          see what the verses will look like before
+                          committing to the change. */}
+                      <Text
+                        style={{
+                          fontFamily: opt.family,
+                          color: selected ? "#fafafa" : "#a3a3a3",
+                          fontSize: 22,
+                          marginTop: 6,
+                          textAlign: "right",
+                          writingDirection: "rtl",
+                          includeFontPadding: false,
+                        }}
+                        allowFontScaling={false}
+                      >
+                        {opt.preview}
+                      </Text>
+                    </View>
+                    <View style={styles.rowAccessory}>
+                      {selected && (
+                        <Feather name="check" size={18} color="#e8c078" />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* === AMBIENT SOUND === */}

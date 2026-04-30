@@ -20,6 +20,57 @@ import {
 
 const STORAGE_KEY = "quran-listener-settings-v3";
 
+/**
+ * Identifier of the Arabic typeface used for the verse body. Both fonts
+ * are bundled locally and pre-loaded at app start, so switching between
+ * them at runtime is instantaneous.
+ *
+ * - `uthmani` → KFGQPC Uthmanic Script HAFS (the official Madinah mushaf
+ *   typeface). Renders ayah-end markers as Arabic-Indic digits inside an
+ *   ornate rosette glyph — this is the "traditional mushaf" look most
+ *   memorisers are used to.
+ * - `amiri`   → AmiriQuran (modern, comprehensive Quranic typeface with
+ *   full GPOS mark / mkmk coverage). A safe fallback if any platform
+ *   ever has trouble positioning a tashkeel correctly with KFGQPC.
+ */
+export type ArabicFontId = "uthmani" | "amiri";
+
+export interface ArabicFontOption {
+  id: ArabicFontId;
+  /** Latin label shown in the picker. */
+  label: string;
+  /** Short description shown under the label. */
+  description: string;
+  /** A short Arabic preview rendered in the option's own font. */
+  preview: string;
+  /** The exact `fontFamily` string registered with `expo-font`. */
+  family: string;
+}
+
+export const ARABIC_FONTS: ArabicFontOption[] = [
+  {
+    id: "uthmani",
+    label: "QPC Uthmani",
+    description:
+      "The official Madinah mushaf script. Includes the rosette ayah marker.",
+    preview: "بِسْمِ ٱللَّهِ",
+    family: "UthmanicHafs",
+  },
+  {
+    id: "amiri",
+    label: "Amiri Quran",
+    description:
+      "Modern Quranic typeface with extra-wide diacritic coverage.",
+    preview: "بِسْمِ ٱللَّهِ",
+    family: "AmiriQuran",
+  },
+];
+
+const DEFAULT_ARABIC_FONT: ArabicFontId = "uthmani";
+
+export const getArabicFont = (id: ArabicFontId): ArabicFontOption =>
+  ARABIC_FONTS.find((f) => f.id === id) ?? ARABIC_FONTS[0];
+
 export interface Settings {
   transition: TransitionMode;
   background: BackgroundId;
@@ -42,6 +93,8 @@ export interface Settings {
    * footer controls' contrast.
    */
   backgroundDim: boolean;
+  /** Which Arabic typeface to render the verse body in. */
+  arabicFont: ArabicFontId;
 }
 
 const DEFAULT_AUTOPLAY_NEXT_SURAH = true;
@@ -56,6 +109,7 @@ const defaultSettings: Settings = {
   ayah: 1,
   autoplayNextSurah: DEFAULT_AUTOPLAY_NEXT_SURAH,
   backgroundDim: DEFAULT_BACKGROUND_DIM,
+  arabicFont: DEFAULT_ARABIC_FONT,
 };
 
 const isValidTransition = (v: unknown): v is TransitionMode =>
@@ -89,6 +143,8 @@ const coerceAutoplayNextSurah = (v: unknown): boolean =>
 // keep the dimmed background they're used to.
 const coerceBackgroundDim = (v: unknown): boolean =>
   typeof v === "boolean" ? v : DEFAULT_BACKGROUND_DIM;
+const isValidArabicFont = (v: unknown): v is ArabicFontId =>
+  typeof v === "string" && ARABIC_FONTS.some((f) => f.id === v);
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -118,6 +174,9 @@ export function useSettings() {
             ayah: clampAyah(surah, parsed.ayah),
             autoplayNextSurah: coerceAutoplayNextSurah(parsed.autoplayNextSurah),
             backgroundDim: coerceBackgroundDim(parsed.backgroundDim),
+            arabicFont: isValidArabicFont(parsed.arabicFont)
+              ? parsed.arabicFont
+              : DEFAULT_ARABIC_FONT,
           });
         }
       } catch {
@@ -150,6 +209,8 @@ export function useSettings() {
     setSettings((s) => ({ ...s, autoplayNextSurah }));
   const setBackgroundDim = (backgroundDim: boolean) =>
     setSettings((s) => ({ ...s, backgroundDim }));
+  const setArabicFont = (arabicFont: ArabicFontId) =>
+    setSettings((s) => ({ ...s, arabicFont }));
 
   /**
    * Atomically update both surah and ayah. The ayah is clamped to the new
@@ -182,6 +243,7 @@ export function useSettings() {
     setAmbientVolume,
     setAutoplayNextSurah,
     setBackgroundDim,
+    setArabicFont,
     setPosition,
     setAyah,
   };

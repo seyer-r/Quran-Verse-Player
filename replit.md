@@ -111,12 +111,16 @@ Opens a slide-in panel from the right. First (and currently only) section: **Aya
 `lib/useSettings.ts` (storage key `quran-listener-settings-v3`) persists transition mode, background, ambient + volume, and **the current surah and ayah** so the app resumes at the same position next launch. All values are validated/clamped on load — out-of-range values fall back to defaults.
 
 ### Fonts
-Two Arabic fonts are bundled locally — both must be loaded by `useFonts` in `app/_layout.tsx` before the splash screen hides, otherwise React Native renders any missing glyphs as a dotted-circle placeholder.
+Two Arabic fonts are bundled locally and **both** are registered in `app/_layout.tsx` via `useFonts`. The tree is gated on `fontsLoaded` before any verse renders — this is what prevents the dotted-circle placeholder you'd otherwise see when React Native paints with a missing-glyph fallback while the font is still streaming in.
 
-- **AmiriQuran.ttf** (~133 KB, Amiri 1.001) — used for the **verse body** (`styles.arabic` in `app/index.tsx`). 1446 glyphs, full GSUB + GPOS coverage including mark and mkmk lookups, so every diacritic (tashkeel, sukun, shadda) anchors correctly to its base letter on every platform.
-- **UthmanicHafs.otf** (~240 KB, KFGQPC Uthmanic Script HAFS) — used only for the **surah-name display** in the header where it renders flawlessly. License is non-commercial.
+The user picks which one to read in via **Settings → Arabic font**. The choice is stored in `settings.arabicFont` (default `"uthmani"`) and applied by overriding `fontFamily` inline on the verse `<Text>` (`arabicFontFamily` in `app/index.tsx`). The picker also previews each font live in its own typeface so you can see the effect before committing.
 
-Why the split: KFGQPC has gaps in its mark-positioning lookups for some less-common Quranic combinations, which caused diacritics to render on a dotted-circle placeholder. AmiriQuran is the modern, comprehensive Quranic typeface and is the safer default for the verse text.
+| id        | family          | file (`assets/fonts/`)  | use                                                                                                                  |
+|-----------|-----------------|-------------------------|----------------------------------------------------------------------------------------------------------------------|
+| `uthmani` | `UthmanicHafs`  | `UthmanicHafs.otf` (~240 KB) | **Default.** Official KFGQPC Madinah mushaf typeface. Renders ayah-end markers as Arabic-Indic digits inside the rosette ornament glyph — the traditional mushaf look memorisers expect. License is non-commercial. |
+| `amiri`   | `AmiriQuran`    | `AmiriQuran.ttf` (~133 KB)   | Modern Quranic typeface, 1446 glyphs, full GSUB + GPOS mark / mkmk coverage. Useful as a fallback if a specific tashkeel combination ever positions oddly with KFGQPC. |
+
+`UthmanicHafs` is also used unconditionally for the surah-name display in the header, regardless of the verse font choice.
 
 Sources:
 - AmiriQuran: `https://github.com/aliftype/amiri/releases/download/1.001/Amiri-1.001.zip` → `AmiriQuran.ttf`

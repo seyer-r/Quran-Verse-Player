@@ -41,7 +41,7 @@ import {
   validateQuran,
 } from "@/data/quran";
 import { getTransition } from "@/lib/transitions";
-import { useSettings } from "@/lib/useSettings";
+import { getArabicFont, useSettings } from "@/lib/useSettings";
 
 // For surahs longer than this, the per-ayah segmented progress row would
 // shrink to invisible hairlines. Switch to a single overall progress bar
@@ -68,9 +68,14 @@ export default function PlayerScreen() {
     setAmbientVolume,
     setAutoplayNextSurah,
     setBackgroundDim,
+    setArabicFont,
     setPosition,
     setAyah: persistAyah,
   } = useSettings();
+  // Live font family for the verse body. Changing the picker in
+  // settings re-renders here instantly because it's just a `Text`
+  // style override.
+  const arabicFontFamily = getArabicFont(settings.arabicFont).family;
 
   // Dev-only structural validation of the bundled Quran corpus. Surfaces
   // any drift loudly in the console instead of corrupting the UI silently.
@@ -1154,7 +1159,11 @@ export default function PlayerScreen() {
                     <Text
                       style={[
                         styles.arabic,
-                        { fontSize: arFs, lineHeight: arLh },
+                        {
+                          fontSize: arFs,
+                          lineHeight: arLh,
+                          fontFamily: arabicFontFamily,
+                        },
                       ]}
                       allowFontScaling={false}
                     >
@@ -1314,6 +1323,7 @@ export default function PlayerScreen() {
         ambientVolume={settings.ambientVolume}
         autoplayNextSurah={settings.autoplayNextSurah}
         backgroundDim={settings.backgroundDim}
+        arabicFont={settings.arabicFont}
         sleepTimerMinutes={sleepDurationMin}
         onTransitionChange={setTransition}
         onBackgroundChange={setBackground}
@@ -1321,6 +1331,7 @@ export default function PlayerScreen() {
         onAmbientVolumeChange={handleAmbientVolumeChange}
         onAutoplayNextSurahChange={setAutoplayNextSurah}
         onBackgroundDimChange={setBackgroundDim}
+        onArabicFontChange={setArabicFont}
         onSleepTimerChange={setSleepTimerMinutes}
       />
 
@@ -1428,18 +1439,12 @@ const styles = StyleSheet.create({
   },
   arabic: {
     color: "#fff",
-    // AmiriQuran is the modern Quranic font with full GPOS mark/mkmk
-    // coverage — it correctly anchors every diacritic (tashkeel) to its
-    // base letter on every platform. The previous KFGQPC font has gaps
-    // in its mark-positioning lookups for some less-common combinations,
-    // which caused diacritics to render on a dotted-circle placeholder.
-    // On web we still pass UthmanicHafs as a secondary so the surah
-    // header (which uses it) isn't visually inconsistent if AmiriQuran
-    // ever fails to load — RN-Web honors comma-list font families.
-    fontFamily: Platform.select({
-      web: "AmiriQuran, UthmanicHafs",
-      default: "AmiriQuran",
-    }),
+    // Default to KFGQPC Uthmanic Script HAFS — the official Madinah
+    // mushaf typeface. Its ayah-end ornament glyphs (which wrap the
+    // Arabic-Indic verse number in a rosette) are the "correct" mushaf
+    // look. The user can swap to AmiriQuran from settings; the
+    // `fontFamily` is overridden inline per-render in that case.
+    fontFamily: "UthmanicHafs",
     textAlign: "center",
     writingDirection: "rtl",
     includeFontPadding: false,
