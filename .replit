@@ -25,11 +25,12 @@ name = "Start application"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "console"
+outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=22069 pnpm --filter @workspace/quran-listener run dev"
+args = "PORT=5000 pnpm --filter @workspace/quran-listener run dev"
+waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -41,15 +42,7 @@ timeoutMs = 20000
 
 [[ports]]
 localPort = 5000
-externalPort = 4200
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
+externalPort = 80
 
 [[ports]]
 localPort = 8082
