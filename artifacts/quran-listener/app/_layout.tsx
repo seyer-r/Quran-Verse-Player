@@ -80,7 +80,18 @@ export default function RootLayout() {
   // mark-positioning bugs were appearing. UthmanicHafs is kept for the
   // surah-name display in the header where it renders flawlessly.
   const [fontsLoaded, fontError] = useFonts({
-    UthmanicHafs: require("../assets/fonts/UthmanicHafs.otf"),
+    // KFGQPC HAFS Uthmanic Script — Version 0.18 (sourced from
+    // quran.com's CDN at /fonts/quran/hafs/uthmanic_hafs/). The older
+    // 0.09 build (mirrored on qurancomplex.gov.sa) shipped with
+    // incomplete GPOS mark-positioning rules — recitation marks like
+    // U+06ED (ARABIC SMALL LOW MEEM, used inside "هُدًۭى" in Al-Baqarah
+    // 2:2) and U+06DB (the muanaqah three-dot pause mark) had no
+    // attachment lookup when they followed certain other marks, so
+    // HarfBuzz wrapped them around a U+25CC dotted-circle placeholder
+    // — the white-dot-encircled-by-dots glyph we were seeing.
+    // Version 0.18 has 1412 glyphs (vs 1071) and the missing GPOS
+    // anchors, while keeping the same official Madinah-Mushaf design.
+    UthmanicHafs: require("../assets/fonts/UthmanicHafsV18.ttf"),
     AmiriQuran: require("../assets/fonts/AmiriQuran.ttf"),
   });
 

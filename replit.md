@@ -117,14 +117,19 @@ The user picks which one to read in via **Settings → Arabic font**. The choice
 
 | id        | family          | file (`assets/fonts/`)  | use                                                                                                                  |
 |-----------|-----------------|-------------------------|----------------------------------------------------------------------------------------------------------------------|
-| `uthmani` | `UthmanicHafs`  | `UthmanicHafs.otf` (~240 KB) | **Default.** Official KFGQPC Madinah mushaf typeface. Renders ayah-end markers as Arabic-Indic digits inside the rosette ornament glyph — the traditional mushaf look memorisers expect. License is non-commercial. |
+| `uthmani` | `UthmanicHafs`  | `UthmanicHafsV18.ttf` (~242 KB) | **Default.** KFGQPC HAFS Uthmanic Script — Version 0.18, the same revision quran.com ships. Renders ayah-end markers as Arabic-Indic digits inside the rosette ornament glyph — the traditional Madinah mushaf look memorisers expect. License is non-commercial. |
 | `amiri`   | `AmiriQuran`    | `AmiriQuran.ttf` (~133 KB)   | Modern Quranic typeface, 1446 glyphs, full GSUB + GPOS mark / mkmk coverage. Useful as a fallback if a specific tashkeel combination ever positions oddly with KFGQPC. |
 
 `UthmanicHafs` is also used unconditionally for the surah-name display in the header, regardless of the verse font choice.
 
+#### Why v18 of UthmanicHafs (not v0.09)
+The first build we shipped (`UthmanicHafs1 Ver09.otf` from `qurancomplex.gov.sa/TTF/`, mirrored on `mustafa0x/qpc-fonts`) had **incomplete GPOS mark-positioning rules**. Recitation marks like U+06ED (ARABIC SMALL LOW MEEM, used inside `هُدًۭى` in Al-Baqarah 2:2) and U+06DB (the muanaqah three-dot pause mark) had no attachment lookup when they followed certain other combining marks, so HarfBuzz wrapped them around a U+25CC dotted-circle base — the visible "white dot encircled by dotted lines" the user reported. The cmap covered the codepoints; the missing piece was the GPOS anchor.
+
+Version 0.18 ships from quran.com's CDN at `https://quran.com/fonts/quran/hafs/uthmanic_hafs/UthmanicHafs1Ver18.ttf`. It has 1412 glyphs (vs 1071 in v0.09) and the missing GPOS anchors. Verified with `uharfbuzz`: shaping the full Al-Baqarah 2:2 text produces zero `.notdef` glyphs and zero dotted-circle insertions. The Madinah-Mushaf design is unchanged.
+
 Sources:
-- AmiriQuran: `https://github.com/aliftype/amiri/releases/download/1.001/Amiri-1.001.zip` → `AmiriQuran.ttf`
-- UthmanicHafs: `https://raw.githubusercontent.com/raflyfahrezi/KFGQPC-Uthmanic-Script-HAFS-Regular/master/arabic.otf` (also preserved at `.local/preserved/UthmanicHafs.otf`).
+- UthmanicHafs **v0.18 (current)** — `https://quran.com/fonts/quran/hafs/uthmanic_hafs/UthmanicHafs1Ver18.ttf`
+- AmiriQuran — `https://github.com/aliftype/amiri/releases/download/1.001/Amiri-1.001.zip` → `AmiriQuran.ttf`
 
 ### Background dim toggle
 `settings.backgroundDim` (default `true`, persisted in AsyncStorage v3 payload, missing field coerced to `true` for backwards compatibility). When `true`, the player renders the standard 4-stop dark scrim over the photo background. When `false`, the scrim becomes near-transparent except for a faint bottom vignette so the footer controls and reciter label stay legible against bright skies. Toggle lives in the **Background** section of the settings panel (sun icon).
