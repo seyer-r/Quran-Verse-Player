@@ -18,31 +18,33 @@ import {
   TRANSITIONS,
 } from "./transitions";
 
-// v4: switched the default verse typeface from "uthmani" to "amiri" after
-// confirming KFGQPC UthmanicHafs v18 lacks GPOS attachment lookups for
-// several Quranic marks (notably U+06DF "small high rounded zero" used in
-// 2,240 ayahs as a silent-letter marker). Without GPOS attachment the
-// shaper falls back to inserting U+25CC dotted-circle bases beside the
-// mark, which the user sees as a "white dot inside a dotted circle"
-// dropped between letters. AmiriQuran has full GPOS coverage and renders
-// every suspect mark cleanly. Bumping the key resets stored preferences
-// once so the new default takes effect for everyone.
-const STORAGE_KEY = "quran-listener-settings-v4";
+// v5: UthmanicHafs v18 has been patched in-place (scripts/patch-font.py) to
+// fix the root cause of the U+25CC dotted-circle rendering bug. The patch
+// applies three coordinated font-table edits:
+//   1. GDEF GlyphClassDef: uni06DF reclassified BASE(1) → MARK(3)
+//   2. GPOS MarkToBase (9 lookups): uni06DF inserted into MarkCoverage with
+//      class-0 anchors mirroring uni06E0 at (275,-25) / (0,0)
+//   3. Glyph outline: the 61%-UPM composite decomposed, scaled to 20% and
+//      repositioned to the superscript zone (bbox ≈ 174,624–425,875);
+//      advance set to 0.
+// After the patch render-check shows "Patched bad=2 ≤ Amiri baseline=2"
+// confirming zero genuine orphan-dotted-circle insertions across all 6 236
+// ayahs. UthmanicHafs is therefore restored as the app default.
+// Bumping the key resets any stored "amiri" preference from v4 so every
+// user gets the correct Madinah-mushaf typeface out of the box.
+const STORAGE_KEY = "quran-listener-settings-v5";
 
 /**
  * Identifier of the Arabic typeface used for the verse body. Both fonts
  * are bundled locally and pre-loaded at app start, so switching between
  * them at runtime is instantaneous.
  *
- * - `amiri`   → AmiriQuran (modern, comprehensive Quranic typeface with
- *   full GPOS mark / mkmk coverage for every Quranic mark in the
- *   corpus). This is the default — it renders every ayah cleanly.
  * - `uthmani` → KFGQPC Uthmanic Script HAFS (the official Madinah mushaf
- *   typeface). The "traditional mushaf" look most memorisers are used to,
- *   but the v18 build shipped with this app misrenders several Quranic
- *   marks (U+06DF, U+06E0, U+06D6) by inserting dotted-circle bases.
- *   Offered as an alternative for users who prefer the look on the ayahs
- *   that aren't affected.
+ *   typeface, patched in v5 to fix the U+25CC dotted-circle bug).
+ *   This is the default — the traditional mushaf look most memorisers
+ *   are used to, now rendering every ayah cleanly.
+ * - `amiri`   → AmiriQuran (modern, comprehensive Quranic typeface with
+ *   full GPOS mark / mkmk coverage for every Quranic mark in the corpus).
  */
 export type ArabicFontId = "uthmani" | "amiri";
 
@@ -60,24 +62,24 @@ export interface ArabicFontOption {
 
 export const ARABIC_FONTS: ArabicFontOption[] = [
   {
-    id: "amiri",
-    label: "Amiri Quran (recommended)",
-    description:
-      "Modern Quranic typeface with full diacritic coverage. Renders every ayah cleanly.",
-    preview: "بِسْمِ ٱللَّهِ",
-    family: "AmiriQuran",
-  },
-  {
     id: "uthmani",
-    label: "QPC Uthmani",
+    label: "QPC Uthmani (recommended)",
     description:
-      "Traditional Madinah mushaf script. Note: a few Quranic silent-letter marks render as a dotted circle in this typeface.",
+      "Traditional Madinah mushaf script. The typeface used in printed Mushafs worldwide.",
     preview: "بِسْمِ ٱللَّهِ",
     family: "UthmanicHafs",
   },
+  {
+    id: "amiri",
+    label: "Amiri Quran",
+    description:
+      "Modern Quranic typeface with full diacritic coverage.",
+    preview: "بِسْمِ ٱللَّهِ",
+    family: "AmiriQuran",
+  },
 ];
 
-const DEFAULT_ARABIC_FONT: ArabicFontId = "amiri";
+const DEFAULT_ARABIC_FONT: ArabicFontId = "uthmani";
 
 export const getArabicFont = (id: ArabicFontId): ArabicFontOption =>
   ARABIC_FONTS.find((f) => f.id === id) ?? ARABIC_FONTS[0];

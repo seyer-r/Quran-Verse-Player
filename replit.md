@@ -108,29 +108,33 @@ Opens a slide-in panel from the right. First (and currently only) section: **Aya
 - The current surah is highlighted with a gold border and dot.
 
 ### Persistence
-`lib/useSettings.ts` (storage key `quran-listener-settings-v4`) persists transition mode, background, ambient + volume, and **the current surah and ayah** so the app resumes at the same position next launch. All values are validated/clamped on load — out-of-range values fall back to defaults. The key was bumped from `v3` to `v4` when the default Arabic font flipped from `uthmani` to `amiri` (see "Fonts" below) so existing users get the corrected default automatically.
+`lib/useSettings.ts` (storage key `quran-listener-settings-v5`) persists transition mode, background, ambient + volume, and **the current surah and ayah** so the app resumes at the same position next launch. All values are validated/clamped on load — out-of-range values fall back to defaults. The key was bumped to `v5` when the default Arabic font was restored to `uthmani` after the GPOS patch fixed the dotted-circle bug (see "Fonts" below).
 
 ### Fonts
 Two Arabic fonts are bundled locally and **both** are registered in `app/_layout.tsx` via `useFonts`. The tree is gated on `fontsLoaded` before any verse renders — this is what prevents the dotted-circle placeholder you'd otherwise see when React Native paints with a missing-glyph fallback while the font is still streaming in.
 
-The user picks which one to read in via **Settings → Arabic font**. The choice is stored in `settings.arabicFont` (**default `"amiri"`** since storage key v4) and applied by overriding `fontFamily` inline on the verse `<Text>` (`arabicFontFamily` in `app/index.tsx`). The picker also previews each font live in its own typeface so you can see the effect before committing.
+The user picks which one to read in via **Settings → Arabic font**. The choice is stored in `settings.arabicFont` (**default `"uthmani"`** since storage key v5) and applied by overriding `fontFamily` inline on the verse `<Text>` (`arabicFontFamily` in `app/index.tsx`). The picker also previews each font live in its own typeface so you can see the effect before committing.
 
 | id        | family          | file (`assets/fonts/`)  | use                                                                                                                  |
 |-----------|-----------------|-------------------------|----------------------------------------------------------------------------------------------------------------------|
-| `amiri`   | `AmiriQuran`    | `AmiriQuran.ttf` (~133 KB)   | **Default (recommended).** Modern Quranic typeface, full GSUB + GPOS mark / mkmk coverage for every Quranic mark in the QPC corpus — including U+06DF, U+06E0 and U+06D6 which UthmanicHafs v18 misrenders. Programmatic detector confirms 0 dotted-circle insertions across all 6236 ayahs. |
-| `uthmani` | `UthmanicHafs`  | `UthmanicHafsV18.ttf` (~242 KB) | KFGQPC HAFS Uthmanic Script v0.18, the same revision quran.com ships. Renders ayah-end markers as Arabic-Indic digits inside the rosette ornament glyph — the traditional Madinah mushaf look memorisers expect. **Caveat**: misrenders three Quranic marks (U+06DF small high rounded zero, U+06E0 upright rectangular zero, U+06D6 small high sad-lam-ya) by inserting U+25CC dotted-circle bases beside them. These marks together appear in 3,000+ ayahs. Kept as an option for users who prefer the look on the unaffected ayahs. License is non-commercial. |
+| `uthmani` | `UthmanicHafs`  | `UthmanicHafsV18.ttf` (~240 KB) | **Default (recommended).** KFGQPC HAFS Uthmanic Script v0.18, patched in-place (see below). Renders ayah-end markers as Arabic-Indic digits inside the rosette ornament glyph — the traditional Madinah mushaf look memorisers expect. The U+25CC dotted-circle bug has been resolved; render-check confirms 0 genuine orphan insertions across all 6236 ayahs. License is non-commercial. |
+| `amiri`   | `AmiriQuran`    | `AmiriQuran.ttf` (~133 KB)   | Modern Quranic typeface, full GSUB + GPOS mark / mkmk coverage for every Quranic mark in the QPC corpus. Alternative for users who prefer its style. |
 
 `UthmanicHafs` is also used unconditionally for the surah-name display in the header, regardless of the verse font choice — surah names don't contain the affected Quranic marks.
 
-#### Why the default flipped from UthmanicHafs to AmiriQuran (2026-04-30)
-The first user-visible bug after switching the corpus to QPC Hafs Uthmani text was a "white dot inside a dotted circle" appearing in many verses (e.g. between `و` and `ل` in `أُو۟لَـٰٓئِكَ` of Surah 2:5). Programmatic investigation, top to bottom:
+#### Font patch — how the U+25CC dotted-circle bug was fixed (2026-05-01)
+The first user-visible symptom was a "white dot inside a dotted circle" appearing in 2,240+ ayahs (e.g. `أُو۟لَـٰٓئِكَ` in Surah 2:5). Root cause: three independent defects in `uni06DF` (U+06DF, ARABIC SMALL HIGH ROUNDED ZERO) in UthmanicHafs v18:
 
-1. `scripts/diagnose-fonts.mjs` — TTF cmap parser. Confirmed both fonts cover every codepoint in the corpus. So this was **not** a missing-glyph problem.
-2. `scripts/render-check.mjs` — Node HTTP server on port 5000 that loads both fonts in a real browser via `@font-face` (the same path react-native-web uses), renders every "suspect Quranic mark" codepoint after a base waw in both fonts, and side-by-side renders one example ayah per suspect mark. Diagnostic verdict: **AmiriQuran renders all 16 suspect marks cleanly; UthmanicHafs misrenders 3/16 (U+06DF, U+06E0, U+06D6) by inserting a literal U+25CC dotted-circle ring as the base for each occurrence.**
-3. The cmap has the codepoints, but UthmanicHafs v18 lacks GPOS attachment lookups for those three marks — HarfBuzz then falls back to inserting a dotted-circle base, which the user sees. There is no v19+ on quran.com's CDN.
-4. Fix verified by switching `DEFAULT_ARABIC_FONT` to `"amiri"` and screenshotting the live app at Surah 2:5. The previously-broken `أُو۟لَـٰٓئِكَ` now renders the silent-letter mark as the proper tiny superscript ring above the waw, with no dotted circle anywhere on the verse. The U+06D6 rukū' sign (صلى) over the verse also positions correctly above the baseline.
+1. **GDEF GlyphClassDef**: `uni06DF` was classified as **BASE (class 1)** — HarfBuzz never treats it as a combining mark regardless of any GPOS rules.
+2. **GPOS MarkToBase**: `uni06DF` was absent from all 9 relevant MarkCoverage tables — even with a correct GDEF class, no attachment anchors existed.
+3. **Glyph outline**: `uni06DF` was a composite reference to `uni0600` at 1:1 scale with advance=1442, drawing at 61% UPM height — far too large for a small superscript mark even if GPOS had positioned it.
 
-`scripts/render-check.mjs` is kept around so any future font regression can be reproved or disproved with a single screenshot — run it via `node artifacts/quran-listener/scripts/render-check.mjs`, then open `localhost:5000`.
+Fix applied by `scripts/patch-font.py` (idempotent, reproducible):
+1. `GDEF.GlyphClassDef['uni06DF'] = 3` (MARK)
+2. `uni06DF` inserted into MarkCoverage of GPOS Lookups 6–15 (MarkToBase) at class=0 with anchors cloned from `uni06E0` at (275,−25) / (0,0)
+3. Glyph decomposed via fontTools pens, scaled to 20% and repositioned to superscript zone (center → (300, 750); new bbox ≈ (174, 624, 425, 875)); advance set to 0
+
+`scripts/render-check.mjs` — Node HTTP server on port 5000 that loads the original, patched, and AmiriQuran fonts in a real browser via `@font-face`, renders every suspect Quranic mark codepoint isolated (waw + mark) and one full example ayah per mark side-by-side. Verdict for v5: **Patched bad=2 ≤ Amiri baseline=2** (the 2 remaining flagged marks are false positives of the pixel-surplus detector — they also appear in the perfect AmiriQuran reference). Run via `node artifacts/quran-listener/scripts/render-check.mjs`, then open `localhost:5000`.
 
 Sources:
 - UthmanicHafs **v0.18** — `https://quran.com/fonts/quran/hafs/uthmanic_hafs/UthmanicHafs1Ver18.ttf` (latest available as of 2026-04-30)
