@@ -33,6 +33,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { CustomBackgroundEditor } from "@/components/CustomBackgroundEditor";
 import { MarqueeText } from "@/components/MarqueeText";
 import { ReciterSheet } from "@/components/ReciterSheet";
 import { SettingsPanel } from "@/components/SettingsPanel";
@@ -62,6 +63,7 @@ import {
   type PlaybackSpeed,
   ARABIC_FONT_SCALES,
   type ArabicFontScale,
+  type CustomBg,
 } from "@/lib/useSettings";
 import { useRecentSurahs } from "@/lib/useRecentSurahs";
 import { useBookmarks } from "@/lib/useBookmarks";
@@ -80,7 +82,7 @@ function formatRemaining(ms: number): string {
 
 export default function PlayerScreen() {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height: screenHeight } = useWindowDimensions();
 
   const {
     settings,
@@ -95,6 +97,7 @@ export default function PlayerScreen() {
     setAutoplayNextSurah,
     setBackgroundDim,
     setArabicFontScale,
+    setCustomBackground,
     setPosition,
     setAyah: persistAyah,
   } = useSettings();
@@ -146,6 +149,7 @@ export default function PlayerScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [audioError, setAudioError] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [customBgEditorOpen, setCustomBgEditorOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reciterSheetOpen, setReciterSheetOpen] = useState(false);
   const [verseMenuVisible, setVerseMenuVisible] = useState(false);
@@ -1358,7 +1362,10 @@ export default function PlayerScreen() {
   const bottomPad =
     Platform.OS === "web" ? Math.max(insets.bottom, 24) : insets.bottom + 12;
 
-  const hasBg = !!activeBgOpt.source || !!activeBgOpt.videoUrl;
+  const hasBg =
+    !!activeBgOpt.source ||
+    !!activeBgOpt.videoUrl ||
+    (activeBg === "custom" && settings.customBackground != null);
 
   // When a background is active the secondary-label grey (#8e8e93) can
   // disappear into the dimmed video frame.  Lightening it slightly when a
@@ -1377,12 +1384,18 @@ export default function PlayerScreen() {
 
   return (
     <View style={styles.root}>
-      {/* === Background layer (static image OR live video) === */}
+      {/* === Background layer (static image OR live video OR custom) === */}
       <Animated.View
         style={[StyleSheet.absoluteFill, { opacity: bgFade }]}
         pointerEvents="none"
       >
-        {activeBgOpt.videoUrl ? (
+        {activeBg === "custom" && settings.customBackground ? (
+          <CustomBgLayer
+            bg={settings.customBackground}
+            screenWidth={width}
+            screenHeight={screenHeight}
+          />
+        ) : activeBgOpt.videoUrl ? (
           <VideoBackground url={activeBgOpt.videoUrl} />
         ) : hasBg && activeBgOpt.source ? (
           <Image
@@ -1743,6 +1756,22 @@ export default function PlayerScreen() {
         onAutoplayNextSurahChange={setAutoplayNextSurah}
         onBackgroundDimChange={setBackgroundDim}
         onSleepTimerChange={setSleepTimerMinutes}
+        customBackground={settings.customBackground}
+        onOpenCustomBgEditor={() => {
+          setSettingsOpen(false);
+          setCustomBgEditorOpen(true);
+        }}
+      />
+
+      <CustomBackgroundEditor
+        open={customBgEditorOpen}
+        onClose={() => setCustomBgEditorOpen(false)}
+        current={settings.customBackground}
+        onApply={(bg) => {
+          setCustomBackground(bg);
+          setBackground("custom");
+          setCustomBgEditorOpen(false);
+        }}
       />
 
       <SurahPicker
@@ -2260,6 +2289,79 @@ const styles = StyleSheet.create({
     pointerEvents: "none",
   },
 });
+
+// ─── CustomBgLayer ───────────────────────────────────────────────────────────
+// Renders the user's custom background (image or video) in the player using
+// the saved scale and normalized pan offsets.  normalizedTx/Y are fractions of
+// screen width/height so the composition is identical across devices.
+
+function CustomBgLayer({
+  bg,
+  screenWidth,
+  screenHeight,
+}: {
+  bg: CustomBg;
+  screenWidth: number;
+  screenHeight: number;
+}) {
+  const tx = bg.normalizedTx * screenWidth;
+  const ty = bg.normalizedTy * screenHeight;
+
+  if (bg.mediaType === "video" && Platform.OS === "web") {
+    return (
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            transform: [
+              { scale: bg.scale },
+              { translateX: tx },
+              { translateY: ty },
+            ],
+          },
+        ]}
+      >
+        {React.createElement("video", {
+          src: bg.uri,
+          autoPlay: true,
+          loop: true,
+          muted: true,
+          playsInline: true,
+          controls: false,
+          disablePictureInPicture: true,
+          disableRemotePlayback: true,
+          tabIndex: -1,
+          style: {
+            position: "absolute" as const,
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover" as const,
+            pointerEvents: "none" as const,
+          },
+        })}
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: bg.uri }}
+      style={[
+        StyleSheet.absoluteFill,
+        {
+          transform: [
+            { scale: bg.scale },
+            { translateX: tx },
+            { translateY: ty },
+          ],
+        },
+      ]}
+      contentFit="cover"
+    />
+  );
+}
 
 // ─── AyahView ────────────────────────────────────────────────────────────────
 // Renders a single ayah (Arabic + translation).

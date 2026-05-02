@@ -18,7 +18,9 @@ export type BackgroundId =
   | "waves"
   | "dunes"
   | "embers"
-  | "galaxy";
+  | "galaxy"
+  // User-uploaded custom background (image or video from device library)
+  | "custom";
 
 export interface BackgroundOption {
   id: BackgroundId;
@@ -128,5 +130,7 @@ export const BACKGROUND_OPTIONS: BackgroundOption[] = [
 
 export const DEFAULT_BACKGROUND: BackgroundId = "none";
 
-export const getBackground = (id: BackgroundId): BackgroundOption =>
-  BACKGROUND_OPTIONS.find((o) => o.id === id) ?? BACKGROUND_OPTIONS[0];
+export const getBackground = (id: BackgroundId): BackgroundOption => {
+  if (id === "custom") return { id: "custom", label: "Custom", source: null };
+  return BACKGROUND_OPTIONS.find((o) => o.id === id) ?? BACKGROUND_OPTIONS[0];
+};

@@ -97,6 +97,28 @@ const DEFAULT_ARABIC_FONT: ArabicFontId = "uthmani";
 export const getArabicFont = (id: ArabicFontId): ArabicFontOption =>
   ARABIC_FONTS.find((f) => f.id === id) ?? ARABIC_FONTS[0];
 
+/**
+ * Persisted data for a user-uploaded custom background.
+ *
+ * - `uri`          : file:// URI (native) or base64 data URL (web images).
+ *                    Blob URLs from a previous web session are discarded on
+ *                    load since they do not survive page reload.
+ * - `mediaType`    : 'image' or 'video'
+ * - `scale`        : zoom factor applied to the media (≥ 1.0)
+ * - `normalizedTx` : horizontal pan offset as a fraction of screen width
+ * - `normalizedTy` : vertical pan offset as a fraction of screen height
+ *
+ * Storing offsets as fractions (rather than pixels) keeps the visual
+ * composition identical across different screen sizes and orientations.
+ */
+export interface CustomBg {
+  uri: string;
+  mediaType: "image" | "video";
+  scale: number;
+  normalizedTx: number;
+  normalizedTy: number;
+}
+
 export interface Settings {
   transition: TransitionMode;
   background: BackgroundId;
@@ -140,6 +162,11 @@ export interface Settings {
    * Allows the user to make the verse text larger or smaller to their liking.
    */
   arabicFontScale: ArabicFontScale;
+  /**
+   * User-uploaded custom background. Null when no custom background has
+   * been set. Active only when `background === 'custom'`.
+   */
+  customBackground: CustomBg | null;
 }
 
 const DEFAULT_AUTOPLAY_NEXT_SURAH = true;
@@ -162,6 +189,7 @@ const defaultSettings: Settings = {
   playbackSpeed: DEFAULT_PLAYBACK_SPEED,
   repeatAyah: DEFAULT_REPEAT_AYAH,
   arabicFontScale: DEFAULT_ARABIC_FONT_SCALE,
+  customBackground: null,
 };
 
 const isValidTransition = (v: unknown): v is TransitionMode =>
@@ -169,7 +197,8 @@ const isValidTransition = (v: unknown): v is TransitionMode =>
 const isValidSpeed = (v: unknown): v is PlaybackSpeed =>
   (PLAYBACK_SPEEDS as readonly number[]).includes(v as number);
 const isValidBackground = (v: unknown): v is BackgroundId =>
-  typeof v === "string" && BACKGROUND_OPTIONS.some((b) => b.id === v);
+  typeof v === "string" &&
+  (v === "custom" || BACKGROUND_OPTIONS.some((b) => b.id === v));
 const isValidAmbient = (v: unknown): v is AmbientId =>
   typeof v === "string" && AMBIENT_OPTIONS.some((a) => a.id === v);
 const clampVolume = (v: unknown): number => {
@@ -187,14 +216,8 @@ const clampAyah = (surahNumber: number, v: unknown): number => {
   if (!Number.isInteger(v) || (v as number) < 1 || (v as number) > max) return 1;
   return v as number;
 };
-// Backwards-compatible: stored payloads from v3.0 don't have this field.
-// Treat undefined as the default (true) so existing users get the new
-// behavior without a wiped session.
 const coerceAutoplayNextSurah = (v: unknown): boolean =>
   typeof v === "boolean" ? v : DEFAULT_AUTOPLAY_NEXT_SURAH;
-// Backwards-compatible: stored payloads from older versions don't have
-// this field. Treat undefined as the default (true) so existing users
-// keep the dimmed background they're used to.
 const coerceBackgroundDim = (v: unknown): boolean =>
   typeof v === "boolean" ? v : DEFAULT_BACKGROUND_DIM;
 const isValidArabicFont = (v: unknown): v is ArabicFontId =>
@@ -203,6 +226,26 @@ const isValidReciter = (v: unknown): v is ReciterId =>
   typeof v === "string" && RECITERS.some((r) => r.id === v);
 const isValidFontScale = (v: unknown): v is ArabicFontScale =>
   (ARABIC_FONT_SCALES as readonly number[]).includes(v as number);
+
+/**
+ * Validate and sanitise a stored customBackground payload.
+ * Blob: URLs from a previous web session are stale and discarded.
+ */
+const coerceCustomBackground = (v: unknown): CustomBg | null => {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.uri !== "string" || !o.uri) return null;
+  // Blob URLs are session-only on web — discard them on reload
+  if (o.uri.startsWith("blob:")) return null;
+  if (o.mediaType !== "image" && o.mediaType !== "video") return null;
+  return {
+    uri: o.uri,
+    mediaType: o.mediaType as "image" | "video",
+    scale: typeof o.scale === "number" && o.scale >= 1 ? o.scale : 1,
+    normalizedTx: typeof o.normalizedTx === "number" ? o.normalizedTx : 0,
+    normalizedTy: typeof o.normalizedTy === "number" ? o.normalizedTy : 0,
+  };
+};
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -247,6 +290,7 @@ export function useSettings() {
             arabicFontScale: isValidFontScale(parsed.arabicFontScale)
               ? parsed.arabicFontScale
               : DEFAULT_ARABIC_FONT_SCALE,
+            customBackground: coerceCustomBackground(parsed.customBackground),
           });
         }
       } catch {
@@ -289,6 +333,8 @@ export function useSettings() {
     setSettings((s) => ({ ...s, repeatAyah }));
   const setArabicFontScale = (arabicFontScale: ArabicFontScale) =>
     setSettings((s) => ({ ...s, arabicFontScale }));
+  const setCustomBackground = (customBackground: CustomBg | null) =>
+    setSettings((s) => ({ ...s, customBackground }));
 
   /**
    * Atomically update both surah and ayah. The ayah is clamped to the new
@@ -326,6 +372,7 @@ export function useSettings() {
     setBackgroundDim,
     setArabicFont,
     setArabicFontScale,
+    setCustomBackground,
     setPosition,
     setAyah,
   };

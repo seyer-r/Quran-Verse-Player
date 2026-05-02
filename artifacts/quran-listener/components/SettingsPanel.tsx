@@ -1,6 +1,10 @@
 import { SymbolIcon } from "@/components/SymbolIcon";
 import { VideoSwatch } from "@/components/VideoBackground";
-import { ARABIC_FONT_SCALES, type ArabicFontScale } from "@/lib/useSettings";
+import {
+  ARABIC_FONT_SCALES,
+  type ArabicFontScale,
+  type CustomBg,
+} from "@/lib/useSettings";
 import { Image } from "expo-image";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -53,6 +57,7 @@ interface SettingsPanelProps {
   backgroundDim: boolean;
   sleepTimerMinutes: number | null;
   arabicFontScale: ArabicFontScale;
+  customBackground: CustomBg | null;
   onTransitionChange: (mode: TransitionMode) => void;
   onBackgroundChange: (id: BackgroundId) => void;
   onAmbientChange: (id: AmbientId) => void;
@@ -61,6 +66,7 @@ interface SettingsPanelProps {
   onBackgroundDimChange: (next: boolean) => void;
   onSleepTimerChange: (minutes: number | null) => void;
   onArabicFontScaleChange: (scale: ArabicFontScale) => void;
+  onOpenCustomBgEditor: () => void;
 }
 
 const SLEEP_OPTIONS: { label: string; shortLabel: string; minutes: number | null }[] = [
@@ -86,6 +92,7 @@ export function SettingsPanel({
   backgroundDim,
   sleepTimerMinutes,
   arabicFontScale,
+  customBackground,
   onTransitionChange,
   onBackgroundChange,
   onAmbientChange,
@@ -94,6 +101,7 @@ export function SettingsPanel({
   onBackgroundDimChange,
   onSleepTimerChange,
   onArabicFontScaleChange,
+  onOpenCustomBgEditor,
 }: SettingsPanelProps) {
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -240,6 +248,83 @@ export function SettingsPanel({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.bgRow}
             >
+              {/* ── Custom background swatch ─────────────────────── */}
+              {(() => {
+                const customSelected = background === "custom";
+                return (
+                  <TouchableOpacity
+                    onPress={onOpenCustomBgEditor}
+                    activeOpacity={0.8}
+                    style={styles.bgItem}
+                  >
+                    <View style={styles.bgSwatch}>
+                      {customBackground?.mediaType === "image" &&
+                      customBackground.uri ? (
+                        <Image
+                          source={{ uri: customBackground.uri }}
+                          style={StyleSheet.absoluteFill}
+                          contentFit="cover"
+                        />
+                      ) : customBackground?.mediaType === "video" ? (
+                        <View
+                          style={[
+                            StyleSheet.absoluteFill,
+                            styles.bgCustomVideoThumb,
+                          ]}
+                        >
+                          <SymbolIcon
+                            name="video.fill"
+                            fallbackIonicon="videocam"
+                            size={18}
+                            color="#525252"
+                          />
+                        </View>
+                      ) : (
+                        <View
+                          style={[
+                            StyleSheet.absoluteFill,
+                            styles.bgCustomEmpty,
+                          ]}
+                        >
+                          <SymbolIcon
+                            name="plus"
+                            fallbackIonicon="add"
+                            size={22}
+                            color="#454545"
+                          />
+                        </View>
+                      )}
+                      {customSelected && (
+                        <View
+                          style={styles.bgSelectedRing}
+                          pointerEvents="none"
+                        />
+                      )}
+                      {customSelected && (
+                        <View style={styles.bgCheck}>
+                          <SymbolIcon
+                            name="checkmark"
+                            fallbackIonicon="checkmark"
+                            size={13}
+                            color="#000"
+                            weight="semibold"
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <Text
+                      style={[
+                        styles.bgLabel,
+                        customSelected && styles.bgLabelSelected,
+                      ]}
+                    >
+                      Custom
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()}
+
+              {/* ── Preset swatches ─────────────────────────────── */}
               {BACKGROUND_OPTIONS.map((bg) => {
                 const selected = bg.id === background;
                 return (
@@ -808,6 +893,16 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingRight: 4,
     gap: 12,
+  },
+  bgCustomEmpty: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1a1a1a",
+  },
+  bgCustomVideoThumb: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#141414",
   },
   bgItem: {
     alignItems: "center",
