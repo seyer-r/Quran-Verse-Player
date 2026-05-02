@@ -54,6 +54,7 @@ import {
   runAudioDiagnostics,
   formatDiagnostics,
 } from "@/lib/audioDiagnostic";
+import { useMediaSession } from "@/lib/useMediaSession";
 import {
   getArabicFont,
   useSettings,
@@ -137,6 +138,10 @@ export default function PlayerScreen() {
   const [displayedIndex, setDisplayedIndex] = useState(index);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  // Absolute player time tracked alongside `progress` to feed the
+  // MediaSession position-state (scrubber in OS media overlay).
+  const [playerDurationSec, setPlayerDurationSec] = useState(0);
+  const [playerCurrentTimeSec, setPlayerCurrentTimeSec] = useState(0);
   const [hasFinished, setHasFinished] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [audioError, setAudioError] = useState(false);
@@ -754,6 +759,8 @@ export default function PlayerScreen() {
         const dur = status.duration ?? 0;
         if (dur > 0) {
           setProgress(Math.min(100, (status.currentTime / dur) * 100));
+          setPlayerDurationSec(dur);
+          setPlayerCurrentTimeSec(status.currentTime);
         } else {
           setProgress(0);
         }
@@ -1276,6 +1283,40 @@ export default function PlayerScreen() {
     },
     [bundle, surah.number, setPosition, getPlayer, recordSurah],
   );
+
+  // MediaSession play/pause wrappers — the API calls play() and pause()
+  // independently (not as a toggle). Both are thin guards over togglePlay
+  // which now drives direction from isPlayingRef, so they are safe to
+  // call even if state is momentarily stale.
+  const mediaSessionPlay = useCallback(() => {
+    if (!isPlayingRef.current) togglePlay();
+  }, [togglePlay]);
+  const mediaSessionPause = useCallback(() => {
+    if (isPlayingRef.current) togglePlay();
+  }, [togglePlay]);
+
+  // Hook — updates OS / browser "Now Playing" widget with each ayah.
+  // Passing Arabic text as `title` means the system widget (macOS menu-bar,
+  // Chrome media overlay, Android lock screen) shows the ayah in the system
+  // Arabic font. It cannot use the custom Uthmanic typeface, but the Unicode
+  // characters render correctly and readably.
+  useMediaSession({
+    isPlaying,
+    arabicText: ayahs[index].arabic,
+    translation: ayahs[index].translation,
+    surahNameLatin: surah.nameLatin,
+    surahMeaning: surah.meaning,
+    ayahNumber: ayahs[index].number,
+    ayahCount: ayahs.length,
+    reciterName: getReciter(settings.reciterId).name,
+    playbackSpeed: settings.playbackSpeed,
+    playerDuration: playerDurationSec,
+    playerCurrentTime: playerCurrentTimeSec,
+    onPlay: mediaSessionPlay,
+    onPause: mediaSessionPause,
+    onPrev: goPrev,
+    onNext: goNext,
+  });
 
   // Responsive Arabic font size — Mushaf-quality on short ayahs, but
   // gracefully scaled DOWN for very long ones (Al-Baqarah ayah 282 is
