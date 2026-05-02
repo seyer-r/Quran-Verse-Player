@@ -89,6 +89,12 @@ export default function RootLayout() {
     // font patching.
     UthmanicHafs: require("../assets/fonts/UthmanicHafsV22.ttf"),
     AmiriQuran: require("../assets/fonts/AmiriQuran.ttf"),
+    // KFGQPC Surah Names font v1 — official calligraphic surah title glyphs
+    // sourced from qul.tarteel.ai/resources/font (Tarteel QUL) and mirrored
+    // in the quran.com open-source frontend repo. Each surah's name is a
+    // single Private Use Area glyph (U+E001..U+E114, BCD-encoded by surah
+    // number). See components/SurahNameGlyph.tsx for the encoding formula.
+    SurahNamesV1: require("../assets/fonts/SurahNamesV1.ttf"),
   });
 
   useEffect(() => {

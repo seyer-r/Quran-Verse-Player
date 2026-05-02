@@ -152,6 +152,29 @@ Sources:
 ### Background dim toggle
 `settings.backgroundDim` (default `true`, persisted in AsyncStorage v3 payload, missing field coerced to `true` for backwards compatibility). When `true`, the player renders the standard 4-stop dark scrim over the photo background. When `false`, the scrim becomes near-transparent except for a faint bottom vignette so the footer controls and reciter label stay legible against bright skies. Toggle lives in the **Background** section of the settings panel (sun icon).
 
+### Surah name glyphs (official calligraphic rendering)
+The plain Unicode Arabic surah name (`nameArabic` from alquran.cloud) has been replaced with official calligraphic glyphs in all three places it appears:
+
+- **Player header top-right** — `SurahNameGlyph size={28}`
+- **SurahPicker list rows** — `SurahNameGlyph size={22}` (was plain Uthmanic text with "سُورَةُ" prefix stripped)
+- **SurahPicker ayah-wheel card** — `SurahNameGlyph size={36}`
+
+**Font**: `assets/fonts/SurahNamesV1.ttf` — the KFGQPC Surah Names font v1, sourced from [qul.tarteel.ai/resources/font](https://qul.tarteel.ai/resources/font) (Tarteel QUL) and mirrored in the [quran/quran.com-frontend-next](https://github.com/quran/quran.com-frontend-next) open-source repo. Registered as `SurahNamesV1` in `_layout.tsx`.
+
+**Glyph encoding**: BCD (Binary-Coded Decimal). Each surah number N is zero-padded to 3 digits and those decimal digits are interpreted as hex nibbles, then added to `0xE000`:
+```
+surahGlyphChar(n) = String.fromCodePoint(0xE000 + parseInt(n.toString().padStart(3,'0'), 16))
+surahGlyphChar(1)   → parseInt("001", 16) = 1   → U+E001
+surahGlyphChar(10)  → parseInt("010", 16) = 16  → U+E010
+surahGlyphChar(100) → parseInt("100", 16) = 256 → U+E100
+surahGlyphChar(114) → parseInt("114", 16) = 276 → U+E114
+```
+The font covers U+E001–U+E114 (114 glyphs, one per surah). U+E000 and U+E115 exist in the font but map to no real surah.
+
+**Component**: `components/SurahNameGlyph.tsx` — accepts `surah`, `size`, `color`, `style`, `numberOfLines`. Uses `adjustsFontSizeToFit` so long surah names (e.g. Surah 3) never overflow their container.
+
+**`nameArabic` field preserved**: still stored in `quran.json` and `quran.ts` — used for accessibility labels. The `data/quran.ts` type and `quran.json` are unchanged.
+
 ### Playback speed control
 Six speeds: 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2× (default 1×). Persisted via `settings.playbackSpeed` (type `PlaybackSpeed`, stored in AsyncStorage v5 key, backward-compat defaults to 1 if missing or invalid).
 

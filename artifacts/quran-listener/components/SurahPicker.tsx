@@ -18,6 +18,7 @@
 //   - Keeps the surah list scannable.
 
 import { SymbolIcon } from "@/components/SymbolIcon";
+import { SurahNameGlyph } from "@/components/SurahNameGlyph";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -455,9 +456,12 @@ function SurahRow({ surah, isCurrent, onPress }: SurahRowProps) {
           {surah.meaning} · {surah.ayahCount} ayahs
         </Text>
       </View>
-      <Text style={styles.surahRowArabic} allowFontScaling={false}>
-        {surah.nameArabic.replace(/^سُورَةُ\s*/, "")}
-      </Text>
+      <SurahNameGlyph
+        surah={surah}
+        size={22}
+        color="#e5e5e5"
+        style={styles.surahRowArabicGlyph}
+      />
       <SymbolIcon
         name="chevron.right"
         fallbackIonicon="chevron-forward"
@@ -527,9 +531,12 @@ function AyahWheelPanel({
         <Text style={styles.surahCardLatin} numberOfLines={1}>
           {surah.nameLatin}
         </Text>
-        <Text style={styles.surahCardArabic} allowFontScaling={false}>
-          {surah.nameArabic}
-        </Text>
+        <SurahNameGlyph
+          surah={surah}
+          size={36}
+          color="#f5f5f5"
+          style={styles.surahCardArabicGlyph}
+        />
         <Text style={styles.surahCardMeta}>
           {surah.meaning} · {surah.ayahCount} ayahs · {surah.revelationType}
         </Text>
@@ -897,13 +904,9 @@ const styles = StyleSheet.create({
     color: "#8e8e93",
     fontSize: 13,
   },
-  surahRowArabic: {
-    color: "#e5e5e5",
-    fontFamily: "UthmanicHafs",
-    fontSize: 20,
-    includeFontPadding: false,
+  surahRowArabicGlyph: {
     textAlign: "right",
-    minWidth: 70,
+    minWidth: 72,
   },
   surahRowChev: {
     marginLeft: 4,
@@ -930,12 +933,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: -0.2,
   },
-  surahCardArabic: {
-    marginTop: 6,
-    fontSize: 26,
-    color: "#f5f5f5",
-    fontFamily: "UthmanicHafs",
-    includeFontPadding: false,
+  surahCardArabicGlyph: {
+    marginTop: 8,
     textAlign: "center",
   },
   surahCardMeta: {

@@ -1,4 +1,5 @@
 import { SymbolIcon } from "@/components/SymbolIcon";
+import { SurahNameGlyph } from "@/components/SurahNameGlyph";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -1215,13 +1216,12 @@ export default function PlayerScreen() {
             </View>
           </TouchableOpacity>
           <View style={styles.headerRight}>
-            <Text
-              style={styles.surahArabic}
-              allowFontScaling={false}
-              numberOfLines={1}
-            >
-              {surah.nameArabic}
-            </Text>
+            <SurahNameGlyph
+              surah={surah}
+              size={28}
+              color="#f5f5f5"
+              style={styles.surahArabicGlyph}
+            />
             <TouchableOpacity
               onPress={() => {
                 pokeControls();
@@ -1628,12 +1628,8 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     fontSize: 17,
   },
-  surahArabic: {
-    fontSize: 22,
-    color: "#f5f5f5",
-    fontFamily: "UthmanicHafs",
-    includeFontPadding: false,
-    maxWidth: 180,
+  surahArabicGlyph: {
+    maxWidth: 190,
   },
   iconBtn: {
     padding: 8,
