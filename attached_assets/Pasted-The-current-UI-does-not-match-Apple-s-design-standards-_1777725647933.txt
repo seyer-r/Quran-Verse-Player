@@ -1,0 +1,31 @@
+The current UI does not match Apple’s design standards and looks inconsistent across devices. Please do the following:
+Part 1 — Current App UI Analysis
+Thoroughly analyse the existing app and identify every area where the UI falls short of Apple’s design standards. Be specific and critical. This includes but is not limited to:
+	•	Settings tab — does it follow iOS conventions? Are the cells, toggles, groupings, and typography correct?
+	•	Surah selection screen — does the list, search, and navigation feel native to iOS or does it look generic/Android-like?
+	•	Play button and audio controls — do they match Apple’s design patterns for media playback (size, shape, placement, iconography)?
+	•	Typography — are the fonts, weights, sizes, and line spacing consistent with iOS standards?
+	•	Spacing and layout — are margins, padding, and alignment consistent throughout the app?
+	•	Colours and contrast — does the colour system follow Apple’s guidelines including dark mode support?
+	•	Icons — are they consistent with SF Symbols or do they look mismatched?
+	•	Navigation — does moving between screens feel native (transitions, back gestures, header styles)?
+	•	Empty states, loading states, error states — are these handled in an Apple-like way?
+For each issue found, clearly state what is wrong and what the Apple-standard equivalent should look like.
+
+Part 2 — Cross-Device Compatibility Audit
+Review the entire UI and fix any layout issues so it looks correct and natural on:
+	•	All iPhone models (iPhone 12, 13, 14, 15 series and their Pro/Plus/Max variants) — accounting for different screen sizes, notches, Dynamic Island, and safe areas
+	•	All Android devices — accounting for varying screen densities, aspect ratios, and navigation bar styles (gesture nav vs button nav)
+Nothing should look stretched, cramped, misaligned, or out of place on any of these devices.
+
+Part 3 — Apple Design Study
+Before planning anything, study Apple’s Human Interface Guidelines and analyse professional Apple-made apps (Podcasts, Music, Books, Health) to deeply understand their design language — typography, spacing, colour, motion, and interaction patterns. Use this as the foundation for all plans below.
+
+Part 4 — Feature Planning Only (Do NOT implement yet)
+Produce a detailed, formal plan for each of the following features. Each plan must cover every possible user scenario, edge case, and interaction state, and must feel completely native to iOS design:
+	1.	Reciter Selection — how the user browses, previews, selects, and switches between different Quran reciters
+	2.	Tab Bar (iOS 26 design) — layout, icons, labels, active states, transitions, and behaviour across iPhone and Android
+	3.	Bookmark Ayah — how a user bookmarks, views, manages, and removes bookmarks, including empty states and confirmation flows
+	4.	Recently Played — how recently played Ayahs or Surahs are tracked, displayed, cleared, and interacted with
+	5.	Text Translations — how the user selects, switches, and views different translations of the Arabic text, including multi-translation view and language options
+Each plan should include: user flow, UI components used, interaction states (default, pressed, loading, empty, error), and any animations or transitions.
