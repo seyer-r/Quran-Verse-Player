@@ -1462,19 +1462,9 @@ export default function PlayerScreen() {
 
             <View style={styles.restartCol}>
               <TouchableOpacity
-                onPress={cycleSpeed}
-                hitSlop={10}
-                activeOpacity={0.6}
-                accessibilityLabel={`Playback speed ${settings.playbackSpeed}×. Tap to change.`}
-                style={styles.speedBtn}
-              >
-                <Text style={styles.speedBtnLabel}>{`${settings.playbackSpeed}×`}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
                 onPress={restart}
                 hitSlop={8}
                 activeOpacity={0.6}
-                style={{ marginTop: 10 }}
               >
                 <SymbolIcon
                   name="arrow.counterclockwise"
@@ -1496,7 +1486,6 @@ export default function PlayerScreen() {
         background={settings.background}
         ambient={settings.ambient}
         ambientVolume={settings.ambientVolume}
-        reciterId={settings.reciterId}
         autoplayNextSurah={settings.autoplayNextSurah}
         backgroundDim={settings.backgroundDim}
         sleepTimerMinutes={sleepDurationMin}
@@ -1504,9 +1493,6 @@ export default function PlayerScreen() {
         onBackgroundChange={setBackground}
         onAmbientChange={handleAmbientChange}
         onAmbientVolumeChange={handleAmbientVolumeChange}
-        onReciterChange={handleReciterChange}
-        playbackSpeed={settings.playbackSpeed}
-        onPlaybackSpeedChange={setPlaybackSpeed}
         onAutoplayNextSurahChange={setAutoplayNextSurah}
         onBackgroundDimChange={setBackgroundDim}
         onSleepTimerChange={setSleepTimerMinutes}
@@ -1526,6 +1512,8 @@ export default function PlayerScreen() {
         onClose={() => setReciterSheetOpen(false)}
         reciterId={settings.reciterId}
         onReciterChange={handleReciterChange}
+        playbackSpeed={settings.playbackSpeed}
+        onPlaybackSpeedChange={setPlaybackSpeed}
       />
     </View>
   );
@@ -1742,21 +1730,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "flex-end",
     justifyContent: "center",
-  },
-  speedBtn: {
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 36,
-    height: 28,
-    borderRadius: 6,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 6,
-  },
-  speedBtnLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#d4d4d4",
-    letterSpacing: -0.3,
   },
   ayahRevealContainer: {
     flex: 1,

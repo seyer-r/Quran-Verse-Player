@@ -30,7 +30,6 @@ import {
   TRANSITIONS,
   type TransitionMode,
 } from "@/lib/transitions";
-import { RECITERS, type ReciterId } from "@/data/reciters";
 
 const AMBIENT_IONICONS: Record<AmbientId, keyof typeof Ionicons.glyphMap> = {
   off: "ban",
@@ -48,7 +47,6 @@ interface SettingsPanelProps {
   background: BackgroundId;
   ambient: AmbientId;
   ambientVolume: number;
-  reciterId: ReciterId;
   autoplayNextSurah: boolean;
   backgroundDim: boolean;
   sleepTimerMinutes: number | null;
@@ -56,7 +54,6 @@ interface SettingsPanelProps {
   onBackgroundChange: (id: BackgroundId) => void;
   onAmbientChange: (id: AmbientId) => void;
   onAmbientVolumeChange: (vol: number) => void;
-  onReciterChange: (id: ReciterId) => void;
   onAutoplayNextSurahChange: (next: boolean) => void;
   onBackgroundDimChange: (next: boolean) => void;
   onSleepTimerChange: (minutes: number | null) => void;
@@ -81,7 +78,6 @@ export function SettingsPanel({
   background,
   ambient,
   ambientVolume,
-  reciterId,
   autoplayNextSurah,
   backgroundDim,
   sleepTimerMinutes,
@@ -89,7 +85,6 @@ export function SettingsPanel({
   onBackgroundChange,
   onAmbientChange,
   onAmbientVolumeChange,
-  onReciterChange,
   onAutoplayNextSurahChange,
   onBackgroundDimChange,
   onSleepTimerChange,
@@ -410,52 +405,6 @@ export function SettingsPanel({
                 </View>
               </View>
             )}
-
-            {/* === RECITER === */}
-            <SectionHeader title="Reciter" style={{ marginTop: 28 }} />
-            <View style={styles.group}>
-              {RECITERS.map((r, i) => {
-                const selected = r.id === reciterId;
-                const isLast = i === RECITERS.length - 1;
-                return (
-                  <TouchableOpacity
-                    key={r.id}
-                    onPress={() => onReciterChange(r.id)}
-                    activeOpacity={0.6}
-                    style={[styles.row, !isLast && styles.rowDivider]}
-                    accessibilityLabel={r.name}
-                  >
-                    <View style={styles.rowIcon}>
-                      <SymbolIcon
-                        name="mic.fill"
-                        fallbackIonicon="mic"
-                        size={18}
-                        color={selected ? "#f5f5f5" : "#737373"}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.rowLabel,
-                        selected && styles.rowLabelSelected,
-                      ]}
-                    >
-                      {r.name}
-                    </Text>
-                    <View style={styles.rowAccessory}>
-                      {selected && (
-                        <SymbolIcon
-                          name="checkmark"
-                          fallbackIonicon="checkmark"
-                          size={17}
-                          color="#e8c078"
-                          weight="semibold"
-                        />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
 
             {/* === PLAYBACK === */}
             <SectionHeader title="Playback" style={{ marginTop: 28 }} />
@@ -871,33 +820,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   sleepPillTextSelected: {
-    color: "#e8c078",
-    fontWeight: "600",
-  },
-  speedPillContainer: {
-    flexDirection: "row",
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 14,
-    padding: 5,
-    gap: 4,
-  },
-  speedPill: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  speedPillSelected: {
-    backgroundColor: "rgba(232,192,120,0.18)",
-  },
-  speedPillText: {
-    fontSize: 14,
-    color: "#737373",
-    fontWeight: "400",
-    letterSpacing: -0.3,
-  },
-  speedPillTextSelected: {
     color: "#e8c078",
     fontWeight: "600",
   },
