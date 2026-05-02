@@ -38,6 +38,7 @@ import {
   TouchableOpacity,
   View,
   useWindowDimensions,
+  type TextStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -309,6 +310,16 @@ function SurahListPanel({
 }: SurahListPanelProps) {
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  const cancelAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(cancelAnim, {
+      toValue: isFocused ? 1 : 0,
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [isFocused, cancelAnim]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return surahs;
@@ -379,13 +390,13 @@ function SurahListPanel({
             onBlur={() => setIsFocused(false)}
             placeholder="Search"
             placeholderTextColor="#636366"
-            style={styles.searchInput}
+            style={styles.searchInput as TextStyle}
             autoCorrect={false}
             autoCapitalize="none"
             returnKeyType="search"
             accessibilityLabel="Search surah"
           />
-          {query.length > 0 && (
+          <Animated.View style={{ opacity: cancelAnim, width: cancelAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) }}>
             <TouchableOpacity
               onPress={() => onQueryChange("")}
               hitSlop={8}
@@ -398,9 +409,20 @@ function SurahListPanel({
                 color="#636366"
               />
             </TouchableOpacity>
-          )}
+          </Animated.View>
         </View>
-        {isFocused && (
+
+        {/* Cancel — always rendered; width + opacity animated so there's no layout jump */}
+        <Animated.View
+          style={{
+            overflow: "hidden",
+            opacity: cancelAnim,
+            width: cancelAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 66],
+            }),
+          }}
+        >
           <TouchableOpacity
             onPress={() => {
               onQueryChange("");
@@ -412,7 +434,7 @@ function SurahListPanel({
           >
             <Text style={styles.searchCancelText}>Cancel</Text>
           </TouchableOpacity>
-        )}
+        </Animated.View>
       </View>
 
       <FlatList
@@ -929,6 +951,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   panel: {
+    flex: 1,
     flexDirection: "column",
   },
   panelInner: {
@@ -981,6 +1004,7 @@ const styles = StyleSheet.create({
   },
   searchWrap: {
     flex: 1,
+    height: 38,
     backgroundColor: "rgba(120,120,128,0.18)",
     borderRadius: 10,
     flexDirection: "row",
@@ -988,16 +1012,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   searchWrapFocused: {
-    backgroundColor: "rgba(120,120,128,0.24)",
+    backgroundColor: "rgba(120,120,128,0.26)",
   },
   searchIcon: {
     marginRight: 6,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 10,
+    height: 38,
     color: "#f5f5f5",
     fontSize: 17,
+    // Suppress the browser's default blue focus ring on web
+    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}),
   },
   searchClear: {
     marginLeft: 6,
