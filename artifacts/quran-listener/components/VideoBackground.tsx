@@ -9,7 +9,7 @@
  *            expo-video's VideoView once the app targets iOS/Android natively.
  */
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 
 interface VideoBackgroundProps {
@@ -18,8 +18,12 @@ interface VideoBackgroundProps {
 
 export function VideoBackground({ url }: VideoBackgroundProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    // Reset opacity immediately when the URL changes so the new video
+    // fades in from black rather than snapping into view.
+    setLoaded(false);
     const el = videoRef.current;
     if (!el) return;
     el.src = url;
@@ -42,6 +46,7 @@ export function VideoBackground({ url }: VideoBackgroundProps) {
         disablePictureInPicture: true,
         disableRemotePlayback: true,
         tabIndex: -1,
+        onCanPlay: () => setLoaded(true),
         style: {
           position: "absolute" as const,
           top: 0,
@@ -50,8 +55,9 @@ export function VideoBackground({ url }: VideoBackgroundProps) {
           height: "100%",
           objectFit: "cover" as const,
           pointerEvents: "none" as const,
-          // Suppress the browser's native "not playing" overlay in all browsers
           outline: "none",
+          opacity: loaded ? 1 : 0,
+          transition: "opacity 900ms ease",
         },
       })}
     </View>
