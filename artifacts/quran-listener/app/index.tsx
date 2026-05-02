@@ -68,14 +68,10 @@ export default function PlayerScreen() {
     setAmbientVolume,
     setAutoplayNextSurah,
     setBackgroundDim,
-    setArabicFont,
     setPosition,
     setAyah: persistAyah,
   } = useSettings();
-  // Live font family for the verse body. Changing the picker in
-  // settings re-renders here instantly because it's just a `Text`
-  // style override.
-  const arabicFontFamily = getArabicFont(settings.arabicFont).family;
+  const arabicFontFamily = getArabicFont("uthmani").family;
 
   // Dev-only structural validation of the bundled Quran corpus. Surfaces
   // any drift loudly in the console instead of corrupting the UI silently.
@@ -1323,7 +1319,6 @@ export default function PlayerScreen() {
         ambientVolume={settings.ambientVolume}
         autoplayNextSurah={settings.autoplayNextSurah}
         backgroundDim={settings.backgroundDim}
-        arabicFont={settings.arabicFont}
         sleepTimerMinutes={sleepDurationMin}
         onTransitionChange={setTransition}
         onBackgroundChange={setBackground}
@@ -1331,7 +1326,6 @@ export default function PlayerScreen() {
         onAmbientVolumeChange={handleAmbientVolumeChange}
         onAutoplayNextSurahChange={setAutoplayNextSurah}
         onBackgroundDimChange={setBackgroundDim}
-        onArabicFontChange={setArabicFont}
         onSleepTimerChange={setSleepTimerMinutes}
       />
 
