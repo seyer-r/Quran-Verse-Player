@@ -17,7 +17,7 @@
 //   - Mirrors Apple's master/detail navigation in Settings, Books, Music.
 //   - Keeps the surah list scannable.
 
-import { Feather } from "@expo/vector-icons";
+import { SymbolIcon } from "@/components/SymbolIcon";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -27,6 +27,7 @@ import {
   Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
@@ -65,6 +66,7 @@ type Step = "surah" | "ayah";
 
 const SHEET_ANIM_MS = 240;
 const STEP_ANIM_MS = 280;
+const SWIPE_CLOSE_THRESHOLD = 90;
 
 export function SurahPicker({
   open,
@@ -85,12 +87,41 @@ export function SurahPicker({
 
   // Sheet open/close.
   const slide = useRef(new Animated.Value(height)).current;
+  const dragY = useRef(new Animated.Value(0)).current;
   const fade = useRef(new Animated.Value(0)).current;
   // Horizontal panel transition (0 = surah, -width = ayah).
   const stepX = useRef(new Animated.Value(0)).current;
 
+  // Keep onClose stable for the PanResponder closure
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const swipePan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) =>
+        g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) dragY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > SWIPE_CLOSE_THRESHOLD || g.vy > 0.8) {
+          dragY.setValue(0);
+          onCloseRef.current();
+        } else {
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 180,
+            friction: 18,
+          }).start();
+        }
+      },
+    }),
+  ).current;
+
   useEffect(() => {
     if (open) {
+      dragY.setValue(0);
       setMounted(true);
       setQuery("");
       setStep(initialStep);
@@ -129,7 +160,7 @@ export function SurahPicker({
         if (finished) setMounted(false);
       });
     }
-  }, [open, height, width, slide, fade, stepX, initialStep, currentSurah, currentAyah, mounted]);
+  }, [open, height, width, slide, dragY, fade, stepX, initialStep, currentSurah, currentAyah, mounted]);
 
   // Animate horizontal step transitions.
   useEffect(() => {
@@ -186,12 +217,12 @@ export function SurahPicker({
             styles.sheet,
             {
               paddingTop: topInset + 14,
-              transform: [{ translateY: slide }],
+              transform: [{ translateY: Animated.add(slide, dragY) }],
             },
           ]}
           accessibilityViewIsModal
         >
-          <View style={styles.handleBar} />
+          <View style={styles.handleBar} {...swipePan.panHandlers} />
 
           {/* Two horizontally-slid panels, each the full width of the sheet. */}
           <View style={styles.panelsViewport}>
@@ -255,6 +286,8 @@ function SurahListPanel({
   onSelectSurah,
   bottomInset,
 }: SurahListPanelProps) {
+  const [isFocused, setIsFocused] = useState(false);
+  const inputRef = useRef<TextInput>(null);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return surahs;
@@ -305,30 +338,59 @@ function SurahListPanel({
           accessibilityLabel="Close"
           activeOpacity={0.7}
         >
-          <Feather name="x" size={20} color="#a3a3a3" />
+          <SymbolIcon name="xmark" fallbackIonicon="close" size={18} color="#a3a3a3" weight="semibold" />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.searchWrap}>
-        <Feather name="search" size={16} color="#737373" style={styles.searchIcon} />
-        <TextInput
-          value={query}
-          onChangeText={onQueryChange}
-          placeholder="Search by name or number"
-          placeholderTextColor="#525252"
-          style={styles.searchInput}
-          autoCorrect={false}
-          autoCapitalize="none"
-          returnKeyType="search"
-          accessibilityLabel="Search surah"
-        />
-        {query.length > 0 && (
+      <View style={styles.searchRow}>
+        <View style={[styles.searchWrap, isFocused && styles.searchWrapFocused]}>
+          <SymbolIcon
+            name="magnifyingglass"
+            fallbackIonicon="search"
+            size={16}
+            color="#8e8e93"
+            style={styles.searchIcon}
+          />
+          <TextInput
+            ref={inputRef}
+            value={query}
+            onChangeText={onQueryChange}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder="Search"
+            placeholderTextColor="#636366"
+            style={styles.searchInput}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            accessibilityLabel="Search surah"
+          />
+          {query.length > 0 && (
+            <TouchableOpacity
+              onPress={() => onQueryChange("")}
+              hitSlop={8}
+              style={styles.searchClear}
+            >
+              <SymbolIcon
+                name="xmark.circle.fill"
+                fallbackIonicon="close-circle"
+                size={16}
+                color="#636366"
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+        {isFocused && (
           <TouchableOpacity
-            onPress={() => onQueryChange("")}
+            onPress={() => {
+              onQueryChange("");
+              inputRef.current?.blur();
+            }}
             hitSlop={8}
-            style={styles.searchClear}
+            style={styles.searchCancel}
+            activeOpacity={0.7}
           >
-            <Feather name="x-circle" size={16} color="#737373" />
+            <Text style={styles.searchCancelText}>Cancel</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -396,10 +458,12 @@ function SurahRow({ surah, isCurrent, onPress }: SurahRowProps) {
       <Text style={styles.surahRowArabic} allowFontScaling={false}>
         {surah.nameArabic.replace(/^سُورَةُ\s*/, "")}
       </Text>
-      <Feather
-        name="chevron-right"
+      <SymbolIcon
+        name="chevron.right"
+        fallbackIonicon="chevron-forward"
         size={16}
         color="#525252"
+        weight="semibold"
         style={styles.surahRowChev}
       />
     </TouchableOpacity>
@@ -444,7 +508,7 @@ function AyahWheelPanel({
           accessibilityLabel="Back to surah list"
           activeOpacity={0.7}
         >
-          <Feather name="chevron-left" size={20} color="#d4d4d4" />
+          <SymbolIcon name="chevron.left" fallbackIonicon="chevron-back" size={20} color="#d4d4d4" weight="semibold" />
           <Text style={styles.backBtnText}>Surah</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -454,7 +518,7 @@ function AyahWheelPanel({
           accessibilityLabel="Close"
           activeOpacity={0.7}
         >
-          <Feather name="x" size={20} color="#a3a3a3" />
+          <SymbolIcon name="xmark" fallbackIonicon="close" size={18} color="#a3a3a3" weight="semibold" />
         </TouchableOpacity>
       </View>
 
@@ -721,10 +785,10 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 17,
     color: "#f5f5f5",
     fontWeight: "600",
-    letterSpacing: -0.4,
+    letterSpacing: -0.2,
     paddingHorizontal: 4,
   },
   closeBtn: {
@@ -749,27 +813,44 @@ const styles = StyleSheet.create({
   },
 
   // Search
-  searchWrap: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 12,
+  searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    gap: 10,
+  },
+  searchWrap: {
+    flex: 1,
+    backgroundColor: "rgba(120,120,128,0.18)",
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+  },
+  searchWrapFocused: {
+    backgroundColor: "rgba(120,120,128,0.24)",
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 6,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     color: "#f5f5f5",
-    fontSize: 15,
+    fontSize: 17,
   },
   searchClear: {
-    marginLeft: 8,
-    padding: 4,
+    marginLeft: 6,
+    padding: 2,
+  },
+  searchCancel: {
+    paddingHorizontal: 2,
+  },
+  searchCancelText: {
+    fontSize: 17,
+    color: "#e8c078",
+    fontWeight: "400",
   },
   emptyText: {
     color: "#737373",
@@ -793,11 +874,11 @@ const styles = StyleSheet.create({
   },
   surahRowNumber: {
     width: 32,
-    color: "#737373",
-    fontSize: 13,
+    color: "#8e8e93",
+    fontSize: 15,
     fontVariant: ["tabular-nums"],
     textAlign: "right",
-    fontWeight: "500",
+    fontWeight: "400",
   },
   surahRowNumberCurrent: {
     color: "#e8c078",
@@ -808,13 +889,13 @@ const styles = StyleSheet.create({
   },
   surahRowTitle: {
     color: "#f5f5f5",
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 17,
+    fontWeight: "400",
   },
   surahRowSubtitle: {
     marginTop: 2,
-    color: "#737373",
-    fontSize: 12,
+    color: "#8e8e93",
+    fontSize: 13,
   },
   surahRowArabic: {
     color: "#e5e5e5",

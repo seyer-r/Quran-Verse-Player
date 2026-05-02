@@ -1,10 +1,11 @@
-import { Feather } from "@expo/vector-icons";
+import { SymbolIcon } from "@/components/SymbolIcon";
 import { Image } from "expo-image";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -16,6 +17,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Ionicons } from "@expo/vector-icons";
 import {
   AMBIENT_OPTIONS,
   type AmbientId,
@@ -28,6 +30,15 @@ import {
   TRANSITIONS,
   type TransitionMode,
 } from "@/lib/transitions";
+
+const AMBIENT_IONICONS: Record<AmbientId, keyof typeof Ionicons.glyphMap> = {
+  off: "ban",
+  rain: "rainy",
+  ocean: "water",
+  forest: "leaf",
+  night: "moon",
+  wind: "cloudy",
+};
 
 interface SettingsPanelProps {
   open: boolean;
@@ -56,7 +67,51 @@ const SLEEP_OPTIONS: { label: string; minutes: number | null }[] = [
   { label: "1 hour", minutes: 60 },
 ];
 
-const ANIM_MS = 280;
+const ANIM_MS = 320;
+const SHEET_MAX_HEIGHT_FRACTION = 0.92;
+const SWIPE_CLOSE_THRESHOLD = 90;
+
+function VolumeSlider({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const trackWidthRef = useRef(0);
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => {
+        const x = e.nativeEvent.locationX;
+        onChange(Math.max(0, Math.min(1, x / (trackWidthRef.current || 1))));
+      },
+      onPanResponderMove: (e) => {
+        const x = e.nativeEvent.locationX;
+        onChange(Math.max(0, Math.min(1, x / (trackWidthRef.current || 1))));
+      },
+    }),
+  ).current;
+
+  return (
+    <View
+      style={styles.sliderOuter}
+      onLayout={(e) => {
+        trackWidthRef.current = e.nativeEvent.layout.width;
+      }}
+      {...pan.panHandlers}
+      accessibilityRole="adjustable"
+      accessibilityLabel="Ambient volume"
+      accessibilityValue={{ min: 0, max: 100, now: Math.round(value * 100) }}
+    >
+      <View style={styles.sliderTrack}>
+        <View style={[styles.sliderFill, { width: `${value * 100}%` as any }]} />
+      </View>
+      <View style={[styles.sliderThumb, { left: `${value * 100}%` as any }]} />
+    </View>
+  );
+}
 
 export function SettingsPanel({
   open,
@@ -76,17 +131,46 @@ export function SettingsPanel({
   onBackgroundDimChange,
   onSleepTimerChange,
 }: SettingsPanelProps) {
-  const { width } = useWindowDimensions();
+  const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const panelWidth = Math.min(440, width);
+  const sheetHeight = screenHeight * SHEET_MAX_HEIGHT_FRACTION;
 
   // Keep the modal mounted while the close animation runs.
   const [mounted, setMounted] = useState(open);
-  const slide = useRef(new Animated.Value(panelWidth)).current;
+  const slide = useRef(new Animated.Value(sheetHeight)).current;
+  const dragY = useRef(new Animated.Value(0)).current;
   const fade = useRef(new Animated.Value(0)).current;
+
+  // Keep onClose stable for the PanResponder closure
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const swipePan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) =>
+        g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) dragY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > SWIPE_CLOSE_THRESHOLD || g.vy > 0.8) {
+          dragY.setValue(0);
+          onCloseRef.current();
+        } else {
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 180,
+            friction: 18,
+          }).start();
+        }
+      },
+    }),
+  ).current;
 
   useEffect(() => {
     if (open) {
+      dragY.setValue(0);
       setMounted(true);
       Animated.parallel([
         Animated.timing(slide, {
@@ -105,7 +189,7 @@ export function SettingsPanel({
     } else if (mounted) {
       Animated.parallel([
         Animated.timing(slide, {
-          toValue: panelWidth,
+          toValue: sheetHeight,
           duration: ANIM_MS,
           easing: Easing.in(Easing.cubic),
           useNativeDriver: true,
@@ -120,11 +204,10 @@ export function SettingsPanel({
         if (finished) setMounted(false);
       });
     }
-  }, [open, panelWidth, slide, fade, mounted]);
+  }, [open, sheetHeight, slide, dragY, fade, mounted]);
 
-  const topInset = Platform.OS === "web" ? Math.max(insets.top, 24) : insets.top;
   const bottomInset =
-    Platform.OS === "web" ? Math.max(insets.bottom, 24) : insets.bottom;
+    Platform.OS === "web" ? Math.max(insets.bottom, 20) : insets.bottom;
 
   return (
     <Modal
@@ -147,16 +230,24 @@ export function SettingsPanel({
           />
         </Animated.View>
 
-        {/* Slide-in panel */}
+        {/* Bottom sheet panel */}
         <Animated.View
           style={[
             styles.panel,
-            { width: panelWidth, transform: [{ translateX: slide }] },
+            {
+              height: sheetHeight,
+              transform: [{ translateY: Animated.add(slide, dragY) }],
+            },
           ]}
           accessibilityViewIsModal
           accessibilityLabel="Settings"
         >
-          <View style={[styles.header, { paddingTop: topInset + 14 }]}>
+          {/* Handle grip — swipe down to dismiss */}
+          <View style={styles.handleWrap} {...swipePan.panHandlers}>
+            <View style={styles.handle} />
+          </View>
+
+          <View style={styles.header}>
             <Text style={styles.headerTitle}>Settings</Text>
             <TouchableOpacity
               onPress={onClose}
@@ -165,7 +256,7 @@ export function SettingsPanel({
               style={styles.closeBtn}
               activeOpacity={0.7}
             >
-              <Feather name="x" size={22} color="#a3a3a3" />
+              <SymbolIcon name="xmark" fallbackIonicon="close" size={18} color="#a3a3a3" weight="semibold" />
             </TouchableOpacity>
           </View>
 
@@ -213,8 +304,9 @@ export function SettingsPanel({
                             { backgroundColor: "#000" },
                           ]}
                         >
-                          <Feather
-                            name="slash"
+                          <SymbolIcon
+                            name="xmark"
+                            fallbackIonicon="close"
                             size={20}
                             color="#525252"
                             style={styles.bgNoneIcon}
@@ -223,7 +315,7 @@ export function SettingsPanel({
                       )}
                       {selected && (
                         <View style={styles.bgCheck}>
-                          <Feather name="check" size={14} color="#000" />
+                          <SymbolIcon name="checkmark" fallbackIonicon="checkmark" size={13} color="#000" weight="semibold" />
                         </View>
                       )}
                     </View>
@@ -243,8 +335,9 @@ export function SettingsPanel({
             <View style={[styles.group, { marginTop: 14 }]}>
               <View style={[styles.row, { paddingVertical: 12 }]}>
                 <View style={styles.rowIcon}>
-                  <Feather
-                    name="sun"
+                  <SymbolIcon
+                    name="sun.max.fill"
+                    fallbackIonicon="sunny"
                     size={18}
                     color={backgroundDim ? "#737373" : "#f5f5f5"}
                   />
@@ -290,8 +383,9 @@ export function SettingsPanel({
                     ]}
                   >
                     <View style={styles.rowIcon}>
-                      <Feather
-                        name={opt.feather as any}
+                      <SymbolIcon
+                        name={opt.sfSymbol as any}
+                        fallbackIonicon={AMBIENT_IONICONS[opt.id]}
                         size={18}
                         color={selected ? "#f5f5f5" : "#737373"}
                       />
@@ -306,7 +400,7 @@ export function SettingsPanel({
                     </Text>
                     <View style={styles.rowAccessory}>
                       {selected && (
-                        <Feather name="check" size={18} color="#e8c078" />
+                        <SymbolIcon name="checkmark" fallbackIonicon="checkmark" size={17} color="#e8c078" weight="semibold" />
                       )}
                     </View>
                   </TouchableOpacity>
@@ -314,34 +408,26 @@ export function SettingsPanel({
               })}
             </View>
 
-            {/* Volume — only when an ambient is selected */}
+            {/* Volume slider — only when an ambient is selected */}
             {ambient !== "off" && (
               <View style={styles.volumeWrap}>
                 <View style={styles.volumeHeader}>
-                  <Feather name="volume-1" size={14} color="#737373" />
-                  <Text style={styles.volumeLabel}>Volume</Text>
+                  <SymbolIcon
+                    name="speaker.wave.1.fill"
+                    fallbackIonicon="volume-low"
+                    size={14}
+                    color="#8e8e93"
+                  />
+                  <Text style={styles.volumeLabel}>Ambient volume</Text>
+                  <SymbolIcon
+                    name="speaker.wave.3.fill"
+                    fallbackIonicon="volume-high"
+                    size={14}
+                    color="#8e8e93"
+                    style={{ marginLeft: "auto" } as any}
+                  />
                 </View>
-                <View style={styles.volumeRow}>
-                  {[0.25, 0.5, 0.75, 1].map((v) => {
-                    const active = ambientVolume >= v - 0.001;
-                    return (
-                      <TouchableOpacity
-                        key={v}
-                        onPress={() => onAmbientVolumeChange(v)}
-                        activeOpacity={0.7}
-                        style={styles.volumeBarTouch}
-                      >
-                        <View
-                          style={[
-                            styles.volumeBar,
-                            { height: 12 + v * 28 },
-                            active && styles.volumeBarActive,
-                          ]}
-                        />
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                <VolumeSlider value={ambientVolume} onChange={onAmbientVolumeChange} />
               </View>
             )}
 
@@ -350,8 +436,9 @@ export function SettingsPanel({
             <View style={styles.group}>
               <View style={[styles.row, { paddingVertical: 12 }]}>
                 <View style={styles.rowIcon}>
-                  <Feather
-                    name="skip-forward"
+                  <SymbolIcon
+                    name="forward.end.fill"
+                    fallbackIonicon="play-skip-forward"
                     size={18}
                     color={autoplayNextSurah ? "#f5f5f5" : "#737373"}
                   />
@@ -393,8 +480,9 @@ export function SettingsPanel({
                     style={[styles.row, !isLast && styles.rowDivider]}
                   >
                     <View style={styles.rowIcon}>
-                      <Feather
-                        name={opt.minutes == null ? "slash" : "moon"}
+                      <SymbolIcon
+                        name={opt.minutes == null ? "moon.zzz" : "moon.fill"}
+                        fallbackIonicon={opt.minutes == null ? "ban" : "moon"}
                         size={18}
                         color={selected ? "#f5f5f5" : "#737373"}
                       />
@@ -409,7 +497,7 @@ export function SettingsPanel({
                     </Text>
                     <View style={styles.rowAccessory}>
                       {selected && (
-                        <Feather name="check" size={18} color="#e8c078" />
+                        <SymbolIcon name="checkmark" fallbackIonicon="checkmark" size={17} color="#e8c078" weight="semibold" />
                       )}
                     </View>
                   </TouchableOpacity>
@@ -450,7 +538,7 @@ export function SettingsPanel({
                     </View>
                     <View style={[styles.rowAccessory, { paddingTop: 2 }]}>
                       {selected && (
-                        <Feather name="check" size={18} color="#e8c078" />
+                        <SymbolIcon name="checkmark" fallbackIonicon="checkmark" size={17} color="#e8c078" weight="semibold" />
                       )}
                     </View>
                   </TouchableOpacity>
@@ -544,30 +632,45 @@ const styles = StyleSheet.create({
   },
   panel: {
     position: "absolute",
-    top: 0,
     bottom: 0,
+    left: 0,
     right: 0,
-    backgroundColor: "#0a0a0a",
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#1c1c1e",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     shadowColor: "#000",
-    shadowOpacity: 0.4,
-    shadowRadius: 24,
-    shadowOffset: { width: -8, height: 0 },
-    elevation: 24,
+    shadowOpacity: 0.5,
+    shadowRadius: 32,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 32,
+    overflow: "hidden",
+  },
+  handleWrap: {
+    alignItems: "center",
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.25)",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
+    paddingTop: 4,
     paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.1)",
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 17,
     color: "#f5f5f5",
     fontWeight: "600",
-    letterSpacing: -0.4,
+    letterSpacing: -0.2,
   },
   closeBtn: {
     width: 32,
@@ -583,10 +686,10 @@ const styles = StyleSheet.create({
 
   // Section header (HIG-like grouped list title)
   sectionHeader: {
-    fontSize: 12,
-    color: "#737373",
-    fontWeight: "500",
-    letterSpacing: 0.6,
+    fontSize: 13,
+    color: "#8e8e93",
+    fontWeight: "400",
+    letterSpacing: 0,
     textTransform: "uppercase",
     marginBottom: 10,
     marginLeft: 4,
@@ -616,7 +719,7 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 17,
     color: "#d4d4d4",
     fontWeight: "400",
   },
@@ -625,9 +728,9 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   rowSubLabel: {
-    marginTop: 2,
+    marginTop: 3,
     fontSize: 13,
-    color: "#737373",
+    color: "#8e8e93",
     lineHeight: 18,
   },
   rowTextWrap: {
@@ -698,33 +801,46 @@ const styles = StyleSheet.create({
   volumeHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 8,
+    gap: 8,
+    marginBottom: 12,
   },
   volumeLabel: {
-    fontSize: 12,
-    color: "#737373",
-    fontWeight: "500",
-  },
-  volumeRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 8,
-    height: 48,
-  },
-  volumeBarTouch: {
+    fontSize: 13,
+    color: "#8e8e93",
+    fontWeight: "400",
     flex: 1,
-    height: 48,
-    alignItems: "center",
-    justifyContent: "flex-end",
   },
-  volumeBarActive: {
+  sliderOuter: {
+    height: 28,
+    justifyContent: "center",
+  },
+  sliderTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    overflow: "hidden",
+  },
+  sliderFill: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    bottom: 0,
     backgroundColor: "#e8c078",
+    borderRadius: 3,
   },
-  volumeBar: {
-    width: "100%",
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderRadius: 6,
+  sliderThumb: {
+    position: "absolute",
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#fff",
+    top: -8,
+    marginLeft: -11,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
 
   sleepHint: {

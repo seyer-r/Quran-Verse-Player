@@ -1,4 +1,5 @@
-import { Feather } from "@expo/vector-icons";
+import { SymbolIcon } from "@/components/SymbolIcon";
+import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -15,6 +16,7 @@ import React, {
   useState,
 } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   Platform,
@@ -1047,14 +1049,15 @@ export default function PlayerScreen() {
             accessibilityLabel="Choose surah"
             activeOpacity={0.7}
           >
-            <Text style={styles.eyebrow}>SURAH {surah.number}</Text>
+            <Text style={styles.eyebrow}>Surah {surah.number}</Text>
             <View style={styles.headerLeftTitleRow}>
               <Text style={styles.surahLabel} numberOfLines={1}>
                 {surah.nameLatin}{" "}
                 <Text style={styles.surahMeaning}>— {surah.meaning}</Text>
               </Text>
-              <Feather
-                name="chevron-down"
+              <SymbolIcon
+                name="chevron.down"
+                fallbackIonicon="chevron-down"
                 size={14}
                 color="#737373"
                 style={styles.chev}
@@ -1080,7 +1083,7 @@ export default function PlayerScreen() {
               style={styles.iconBtn}
               activeOpacity={0.7}
             >
-              <Feather name="settings" size={20} color="#d4d4d4" />
+              <SymbolIcon name="gearshape" fallbackIonicon="settings-outline" size={20} color="#d4d4d4" />
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -1101,7 +1104,7 @@ export default function PlayerScreen() {
             accessibilityLabel="Choose ayah"
           >
             <Text style={styles.counter}>
-              AYAH {ayahs[index].number} OF {ayahs.length}
+              Ayah {ayahs[index].number} of {ayahs.length}
             </Text>
           </TouchableOpacity>
         </Animated.View>
@@ -1197,9 +1200,9 @@ export default function PlayerScreen() {
               accessibilityLabel="Cancel sleep timer"
               hitSlop={6}
             >
-              <Feather name="moon" size={11} color="#e8c078" />
+              <SymbolIcon name="moon.fill" fallbackIonicon="moon" size={11} color="#e8c078" />
               <Text style={styles.sleepChipText}>
-                SLEEP IN {formatRemaining(sleepRemainingMs)}
+                Sleep in {formatRemaining(sleepRemainingMs)}
               </Text>
             </TouchableOpacity>
           )}
@@ -1208,11 +1211,18 @@ export default function PlayerScreen() {
               {ayahs.map((a, i) => {
                 const fill = i < index ? 100 : i === index ? progress : 0;
                 return (
-                  <View key={a.number} style={styles.progressTrack}>
+                  <TouchableOpacity
+                    key={a.number}
+                    style={styles.progressTrack}
+                    onPress={() => setIndex(i)}
+                    activeOpacity={0.7}
+                    hitSlop={4}
+                    accessibilityLabel={`Go to ayah ${a.number}`}
+                  >
                     <View
                       style={[styles.progressFill, { width: `${fill}%` }]}
                     />
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -1239,56 +1249,84 @@ export default function PlayerScreen() {
 
             <View style={styles.controlsCenter}>
               <TouchableOpacity
-                onPress={goPrev}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  goPrev();
+                }}
                 accessibilityLabel="Previous ayah"
                 disabled={index === 0 && progress < 1}
                 hitSlop={10}
-                style={styles.iconBtn}
+                style={[
+                  styles.iconBtn,
+                  { opacity: index === 0 && progress < 1 ? 0.3 : 1 },
+                ]}
                 activeOpacity={0.7}
               >
-                <Feather
-                  name="skip-back"
+                <SymbolIcon
+                  name="backward.end.fill"
+                  fallbackIonicon="play-skip-back"
                   size={22}
-                  color={
-                    index === 0 && progress < 1 ? "#3a3a3a" : "#d4d4d4"
-                  }
+                  color="#d4d4d4"
                 />
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={togglePlay}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  togglePlay();
+                }}
                 accessibilityLabel={isPlaying ? "Pause" : "Play"}
                 activeOpacity={0.85}
                 style={styles.playBtn}
               >
-                <Feather
-                  name={
-                    hasFinished ? "rotate-ccw" : isPlaying ? "pause" : "play"
-                  }
-                  size={26}
-                  color="#000"
-                  style={
-                    !hasFinished && !isPlaying
-                      ? { marginLeft: 2 }
-                      : undefined
-                  }
-                />
+                {isLoading && isPlaying ? (
+                  <ActivityIndicator color="#000" size="small" />
+                ) : (
+                  <SymbolIcon
+                    name={
+                      hasFinished
+                        ? "arrow.counterclockwise"
+                        : isPlaying
+                          ? "pause.fill"
+                          : "play.fill"
+                    }
+                    fallbackIonicon={
+                      hasFinished
+                        ? "refresh"
+                        : isPlaying
+                          ? "pause"
+                          : "play"
+                    }
+                    size={26}
+                    color="#000"
+                    style={
+                      !hasFinished && !isPlaying
+                        ? { marginLeft: 2 }
+                        : undefined
+                    }
+                  />
+                )}
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={goNext}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  goNext();
+                }}
                 accessibilityLabel="Next ayah"
                 disabled={index === ayahs.length - 1}
                 hitSlop={10}
-                style={styles.iconBtn}
+                style={[
+                  styles.iconBtn,
+                  { opacity: index === ayahs.length - 1 ? 0.3 : 1 },
+                ]}
                 activeOpacity={0.7}
               >
-                <Feather
-                  name="skip-forward"
+                <SymbolIcon
+                  name="forward.end.fill"
+                  fallbackIonicon="play-skip-forward"
                   size={22}
-                  color={
-                    index === ayahs.length - 1 ? "#3a3a3a" : "#d4d4d4"
-                  }
+                  color="#d4d4d4"
                 />
               </TouchableOpacity>
             </View>
@@ -1299,16 +1337,18 @@ export default function PlayerScreen() {
                 hitSlop={8}
                 activeOpacity={0.6}
               >
-                <Text style={styles.restartText}>RESTART</Text>
+                <SymbolIcon
+                  name="arrow.counterclockwise"
+                  fallbackIonicon="refresh"
+                  size={20}
+                  color="#8e8e93"
+                />
               </TouchableOpacity>
             </View>
           </View>
         </Animated.View>
       </Pressable>
 
-      {isLoading && isPlaying && (
-        <View style={styles.loadingPulse} pointerEvents="none" />
-      )}
 
       <SettingsPanel
         open={settingsOpen}
@@ -1378,20 +1418,21 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   eyebrow: {
-    fontSize: 10,
-    letterSpacing: 3,
-    color: "#a3a3a3",
-    fontWeight: "500",
+    fontSize: 12,
+    letterSpacing: 0,
+    color: "#8e8e93",
+    fontWeight: "400",
   },
   surahLabel: {
-    fontSize: 15,
+    fontSize: 17,
     color: "#f5f5f5",
-    fontWeight: "500",
+    fontWeight: "600",
     flexShrink: 1,
   },
   surahMeaning: {
-    color: "#a3a3a3",
+    color: "#8e8e93",
     fontWeight: "400",
+    fontSize: 17,
   },
   surahArabic: {
     fontSize: 22,
@@ -1410,10 +1451,10 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   counter: {
-    fontSize: 11,
-    letterSpacing: 5,
-    color: "#a3a3a3",
-    fontWeight: "500",
+    fontSize: 13,
+    letterSpacing: 0,
+    color: "#8e8e93",
+    fontWeight: "400",
   },
   stage: {
     flex: 1,
@@ -1482,10 +1523,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sleepChipText: {
-    fontSize: 10,
-    letterSpacing: 2,
+    fontSize: 12,
+    letterSpacing: 0,
     color: "#e8c078",
-    fontWeight: "600",
+    fontWeight: "500",
   },
   progressTrack: {
     flex: 1,
@@ -1510,15 +1551,16 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   reciterEyebrow: {
-    fontSize: 9,
-    letterSpacing: 3,
-    color: "#737373",
-    fontWeight: "500",
+    fontSize: 11,
+    letterSpacing: 0,
+    color: "#8e8e93",
+    fontWeight: "400",
   },
   reciterName: {
-    marginTop: 4,
-    fontSize: 12,
+    marginTop: 2,
+    fontSize: 13,
     color: "#d4d4d4",
+    fontWeight: "500",
   },
   controlsCenter: {
     flexDirection: "row",
@@ -1540,19 +1582,5 @@ const styles = StyleSheet.create({
   restartCol: {
     flex: 1,
     alignItems: "flex-end",
-  },
-  restartText: {
-    fontSize: 10,
-    letterSpacing: 3,
-    color: "#a3a3a3",
-    fontWeight: "500",
-  },
-  loadingPulse: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.05)",
   },
 });

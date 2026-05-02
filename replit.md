@@ -68,14 +68,17 @@ The ambient effect is split into two `useEffect`s in `app/index.tsx`: one keyed 
 ### Picker auto-play
 The surah/ayah picker's primary CTA reads "Listen from ayah N", so it must start playback on confirm — previously it required an extra tap on the play button. `handlePickPosition` now plays immediately for same-surah picks (the bundle is already mounted) and uses a `shouldAutoPlayRef` flag for cross-surah picks (the audio listener effect re-attaches after the bundle rebuild and starts playback once the new player exists).
 
-### Player controls (bottom)
-- For surahs with ≤30 ayahs: thin horizontal segments — one per ayah — that fill left-to-right as audio plays. Past ayahs show 100%, current shows live progress, future show 0%.
+### Player controls (bottom) — Apple HIG compliant
+- For surahs with ≤30 ayahs: thin horizontal segments — one per ayah — that fill left-to-right as audio plays. **Segments are tappable to jump directly to that ayah (C13).** Past ayahs show 100%, current shows live progress, future show 0%.
 - For longer surahs: a single overall progress bar across the whole surah (segments would be invisible at 286 wide).
-- Center: prev / play-pause / next. Play button is a 64×64 white circle. While buffering, an animated ping ring shows around it. When the surah finishes, the play button becomes a "restart" icon (`RotateCcw`).
-- Bottom-left: reciter name. Bottom-right: "RESTART" text button.
+- Center: prev / play-pause / next. Play button is a 64×64 white circle. **Shows ActivityIndicator when buffering (C10)**. When the surah finishes, the play button becomes a "restart" icon.
+- **Disabled skip buttons use opacity:0.3 instead of colour change (C11).**
+- **Bottom-right: `arrow.counterclockwise` SF Symbol icon instead of "RESTART" text (C12).**
+- **Haptic feedback (expo-haptics) on play/pause (medium) and skip prev/next (light) (C14).**
+- Bottom labels use sentence case, 13–17pt, system secondary colour `#8e8e93` — no spaced all-caps (C05).
 
 ### Settings panel (gear in top-right header)
-Opens a slide-in panel from the right. First (and currently only) section: **Ayah transition** — the cross-fade behavior between verses. Five options, persisted to local storage (web) / AsyncStorage (native):
+**Opens as a bottom sheet (C06), not a right-slide sidebar.** Slides up from the bottom with rounded top corners, a drag handle, and swipe-down-to-dismiss (C07). Sections: Background, Ambient sound, Playback, Sleep timer, Verse transition. **Ambient volume uses a continuous PanResponder slider instead of 4 bar-graph buttons (C09).** Options persisted to AsyncStorage (native):
 
 | id         | label         | duration | through-black | description                                    |
 |------------|---------------|----------|---------------|------------------------------------------------|
