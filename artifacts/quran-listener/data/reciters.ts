@@ -1,4 +1,4 @@
-export type ReciterId = "alafasy" | "sudais" | "ghamdi" | "shatri" | "husary";
+export type ReciterId = "alafasy" | "hudhaify" | "maher" | "shatri" | "husary";
 
 export interface ReciterOption {
   id: ReciterId;
@@ -13,14 +13,14 @@ export const RECITERS: ReciterOption[] = [
     cdnIdentifier: "ar.alafasy",
   },
   {
-    id: "sudais",
-    name: "Abdul Rahman Al-Sudais",
-    cdnIdentifier: "ar.abdurrahmansudais",
+    id: "hudhaify",
+    name: "Ali Al-Hudhaify",
+    cdnIdentifier: "ar.hudhaify",
   },
   {
-    id: "ghamdi",
-    name: "Saad Al-Ghamdi",
-    cdnIdentifier: "ar.saadalghamdi",
+    id: "maher",
+    name: "Maher Al-Muaiqly",
+    cdnIdentifier: "ar.mahermuaiqly",
   },
   {
     id: "shatri",

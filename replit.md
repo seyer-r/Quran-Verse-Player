@@ -35,8 +35,14 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 ## quran-listener — Feature Spec
 
 ### Visual / Audio
-- **Reciter**: Mishary Rashid Alafasy.
-- **Audio source**: `https://cdn.islamic.network/quran/audio/128/ar.alafasy/{globalNumber}.mp3` where `globalNumber` is the 1..6236 ayah index across the whole Quran (built via `audioUrlForGlobalAyah` in `data/quran.ts`).
+- **Reciters** (5, all verified HTTP 200 on the CDN):
+  - Mishary Rashid Alafasy (`ar.alafasy`) — default
+  - Ali Al-Hudhaify (`ar.hudhaify`)
+  - Maher Al-Muaiqly (`ar.mahermuaiqly`)
+  - Abu Bakr Al-Shatri (`ar.shaatree`)
+  - Mahmoud Khalil Al-Hussary (`ar.husary`)
+  - ⚠️ DO NOT use `ar.abdurrahmansudais` / `ar.saadalghamdi` — both return HTTP 403 from the CDN for all ayahs.
+- **Audio source**: `https://cdn.islamic.network/quran/audio/128/{cdnIdentifier}/{globalNumber}.mp3` where `globalNumber` is the 1..6236 ayah index across the whole Quran (built via `audioUrlForGlobalAyah` in `data/quran.ts`).
 - **Background**: pure black (`#000`) by default, optional photo backgrounds with scrim.
 - **Surah header (left)**: small uppercase eyebrow `SURAH N`, then `<latin name> — <meaning>` with a chevron-down icon. Tapping opens the surah/ayah picker.
 - **Surah header (right)**: Arabic surah name in the Quran font, with a settings (gear) icon to its left.
@@ -145,6 +151,17 @@ Sources:
 
 ### Background dim toggle
 `settings.backgroundDim` (default `true`, persisted in AsyncStorage v3 payload, missing field coerced to `true` for backwards compatibility). When `true`, the player renders the standard 4-stop dark scrim over the photo background. When `false`, the scrim becomes near-transparent except for a faint bottom vignette so the footer controls and reciter label stay legible against bright skies. Toggle lives in the **Background** section of the settings panel (sun icon).
+
+### Audio — reciter switching architecture
+The `bundle` useMemo is keyed on **both** `surah.number` and `settings.reciterId`. Changing either tears down all existing `AudioPlayer` instances and builds a fresh set, ensuring the new reciter's CDN URLs are used from the very next play.
+
+- `getPlayer` useCallback has `[bundle, ayahs, settings.reciterId]` as deps — stale closure is impossible.
+- `handleReciterChange` (not `setReciter` directly) is passed to both `ReciterSheet` and `SettingsPanel`. It captures `isPlayingRef.current` into `reciterChangedRef` so the audio effect can auto-resume on the new player if audio was playing at switch time.
+- `currentRecitationPlayerRef` always points to the live player. The sleep-timer reads it (instead of `bundle.players[idx]`) so it can fade/pause the correct player even after a bundle rebuild.
+
+### Audio — error handling and web fixes
+- **Load timeout**: if a player hasn't emitted `isLoaded: true` after 12 s (e.g. CDN error, network failure), `isLoading` is cleared and `audioError` is set. The play button shows a red ⚠️ instead of an infinite spinner. Tapping play clears the error and retries.
+- **Web `onended` poll**: expo-audio v1.1.0's `AudioPlayerWeb.onended` only resets an internal timer — it never emits a `playbackStatusUpdate` with `didJustFinish: true`, and `ontimeupdate` stops firing after the media ends. A `setInterval` at 200 ms polls `player.currentTime >= player.duration - 0.5` on web so ayah auto-advance works correctly in the browser.
 
 ### Skip throttle (race-condition fix)
 Rapid taps on prev / next used to leave the player desynced (paused player + isPlaying still true, dead controls) because each tap fired a fresh pause/seek/play sequence on top of the previous one. Two defenses in `app/index.tsx`:

@@ -42,7 +42,7 @@ import {
   TOTAL_SURAHS,
   validateQuran,
 } from "@/data/quran";
-import { getReciter } from "@/data/reciters";
+import { getReciter, type ReciterId } from "@/data/reciters";
 import { getTransition } from "@/lib/transitions";
 import { getArabicFont, useSettings } from "@/lib/useSettings";
 
@@ -115,6 +115,7 @@ export default function PlayerScreen() {
   const [progress, setProgress] = useState(0);
   const [hasFinished, setHasFinished] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [audioError, setAudioError] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reciterSheetOpen, setReciterSheetOpen] = useState(false);
@@ -148,6 +149,13 @@ export default function PlayerScreen() {
   // which is set up once per (surah, index) and otherwise wouldn't see
   // settings changes between attaches.
   const autoplayNextSurahRef = useRef(settings.autoplayNextSurah);
+  // Set to true (meaning "was playing") when the user switches reciter while
+  // audio is playing, so the audio effect knows to auto-resume on the new player.
+  const reciterChangedRef = useRef(false);
+  // Always points to the AudioPlayer for the current ayah. The sleep timer
+  // reads this ref rather than bundle.players so it still fades/pauses the
+  // correct player even after a bundle rebuild caused by a reciter switch.
+  const currentRecitationPlayerRef = useRef<AudioPlayer | null>(null);
   useEffect(() => {
     indexRef.current = index;
   }, [index]);
@@ -242,10 +250,12 @@ export default function PlayerScreen() {
         (_, i) => new Animated.Value(i === initialAyahIdx ? 1 : 0),
       ),
     };
-    // We intentionally key the bundle on surah.number alone — a change in
-    // settings.ayah within the same surah must NOT rebuild players.
+    // We key the bundle on both surah.number and reciterId. Changing either
+    // tears down all existing players and creates a fresh set with the
+    // correct audio URLs. settings.ayah must NOT be in deps — a position
+    // change within the same surah/reciter must not rebuild players.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [surah.number]);
+  }, [surah.number, settings.reciterId]);
 
   // Tear down the previous bundle's players when surah changes (and on
   // unmount). Without this, the ~ayahCount AudioPlayers from the prior
@@ -290,7 +300,7 @@ export default function PlayerScreen() {
       }
       return p;
     },
-    [bundle, ayahs],
+    [bundle, ayahs, settings.reciterId],
   );
 
   const safePlay = (p: AudioPlayer | null | undefined) => {
@@ -365,7 +375,9 @@ export default function PlayerScreen() {
     let cancelled = false;
 
     const applyVolume = (factor: number) => {
-      const recit = bundle.players[indexRef.current];
+      // Use the ref so we always reach the live player even after a
+      // bundle rebuild caused by a reciter switch mid-session.
+      const recit = currentRecitationPlayerRef.current;
       if (recit) {
         try {
           recit.volume = factor;
@@ -386,7 +398,7 @@ export default function PlayerScreen() {
       const now = Date.now();
       const remaining = sleepExpiresAt - now;
       if (remaining <= 0) {
-        const recit = bundle.players[indexRef.current];
+        const recit = currentRecitationPlayerRef.current;
         if (recit) safePause(recit);
         if (settings.ambient !== "off") {
           const a = ambientPlayersRef.current[settings.ambient];
@@ -470,11 +482,74 @@ export default function PlayerScreen() {
   // bundle rebuild) and "play the picked ayah".
   const shouldAutoPlayRef = useRef(false);
 
-  // Audio status subscription — re-attaches whenever index OR surah changes.
+  // Audio status subscription — re-attaches whenever index, surah, or
+  // reciter changes (getPlayer changes when any of those change).
   useEffect(() => {
     const player = getPlayer(index);
+    // Track the live player so the sleep timer always fades/pauses the
+    // correct player even after a bundle rebuild from a reciter switch.
+    currentRecitationPlayerRef.current = player;
     setProgress(0);
     setIsLoading(true);
+    setAudioError(false);
+
+    // ---------------------------------------------------------------
+    // Shared "track finished" logic — used by both the status listener
+    // and the web ended-poll below so they stay perfectly in sync.
+    // ---------------------------------------------------------------
+    const handleDidFinish = () => {
+      const cur = indexRef.current;
+      if (cur < ayahs.length - 1) {
+        safePause(player);
+        safeSeekZero(player);
+        const next = getPlayer(cur + 1);
+        if (isPlayingRef.current) {
+          safePlay(next);
+        }
+        setIndex(cur + 1);
+      } else {
+        // End of surah.
+        safePause(player);
+        const wasPlaying = isPlayingRef.current;
+        const canAdvance =
+          autoplayNextSurahRef.current &&
+          wasPlaying &&
+          surah.number < TOTAL_SURAHS;
+        if (canAdvance) {
+          shouldAutoPlayRef.current = true;
+          setProgress(0);
+          setHasFinished(false);
+          setIsLoading(true);
+          setIsPlaying(true);
+          // Reset index BEFORE the settings update so when the new
+          // bundle mounts (ayah 1) the index already aligns.
+          setIndex(0);
+          setDisplayedIndex(0);
+          setPosition(surah.number + 1, 1);
+        } else {
+          setIsPlaying(false);
+          setHasFinished(true);
+          setProgress(100);
+        }
+      }
+    };
+
+    // ---------------------------------------------------------------
+    // Load-failure safety net. expo-audio's web implementation has no
+    // onerror handler, so a 4xx/5xx response or network failure never
+    // emits a status event. Without this timeout the spinner runs
+    // forever. After 12 s we surface the error icon instead.
+    // ---------------------------------------------------------------
+    let loadTimeoutId: ReturnType<typeof setTimeout> | null = setTimeout(
+      () => {
+        loadTimeoutId = null;
+        if (!player.isLoaded) {
+          setIsLoading(false);
+          setAudioError(true);
+        }
+      },
+      12_000,
+    );
 
     const sub = player.addListener(
       "playbackStatusUpdate",
@@ -484,6 +559,12 @@ export default function PlayerScreen() {
           setIsLoading(true);
           return;
         }
+        // First loaded event — cancel the error timeout.
+        if (loadTimeoutId) {
+          clearTimeout(loadTimeoutId);
+          loadTimeoutId = null;
+        }
+        setAudioError(false);
         setIsLoading(!!status.isBuffering);
 
         const dur = status.duration ?? 0;
@@ -494,67 +575,70 @@ export default function PlayerScreen() {
         }
 
         if (status.didJustFinish) {
-          const cur = indexRef.current;
-          if (cur < ayahs.length - 1) {
-            safePause(player);
-            safeSeekZero(player);
-            const next = getPlayer(cur + 1);
-            if (isPlayingRef.current) {
-              safePlay(next);
-            }
-            setIndex(cur + 1);
-          } else {
-            // End of surah. If auto-advance is on and we're not yet at the
-            // last surah (114), jump to ayah 1 of the next surah and let
-            // the bundle-rebuild + listener re-attach pick up playback via
-            // the shouldAutoPlay flag (same path used by the picker for a
-            // cross-surah jump).
-            safePause(player);
-            const wasPlaying = isPlayingRef.current;
-            const canAdvance =
-              autoplayNextSurahRef.current &&
-              wasPlaying &&
-              surah.number < TOTAL_SURAHS;
-            if (canAdvance) {
-              shouldAutoPlayRef.current = true;
-              setProgress(0);
-              setHasFinished(false);
-              setIsLoading(true);
-              setIsPlaying(true);
-              // Reset local index BEFORE the settings update so when the
-              // new bundle mounts (with ayah 1) the index already aligns.
-              setIndex(0);
-              setDisplayedIndex(0);
-              setPosition(surah.number + 1, 1);
-            } else {
-              setIsPlaying(false);
-              setHasFinished(true);
-              setProgress(100);
-            }
-          }
+          handleDidFinish();
         }
       },
     );
 
-    // Pre-create the next player so it can pre-load.
+    // Pre-create the next player so it can buffer ahead.
     if (index < ayahs.length - 1) {
       getPlayer(index + 1);
     }
 
-    // If the user just confirmed an ayah from the picker for a *different*
-    // surah, the bundle was rebuilt and we now have a fresh player attached.
-    // Start playback now — that's what the picker's "Listen from ayah N"
-    // CTA promised.
+    // ---------------------------------------------------------------
+    // Auto-play decisions (three cases):
+    //   1. Cross-surah picker jump (shouldAutoPlayRef) — always play.
+    //   2. Reciter switch while playing (reciterChangedRef) — resume.
+    //   3. Normal ayah skip — the skip handler already called safePlay
+    //      before setIndex, so no action needed here.
+    // ---------------------------------------------------------------
     if (shouldAutoPlayRef.current) {
       shouldAutoPlayRef.current = false;
       safeSeekZero(player);
       safePlay(player);
       setIsPlaying(true);
+    } else if (reciterChangedRef.current) {
+      reciterChangedRef.current = false;
+      safeSeekZero(player);
+      safePlay(player);
+    }
+
+    // ---------------------------------------------------------------
+    // Web ended-poll. expo-audio's AudioPlayerWeb.onended only resets
+    // lastEmitTime to 0 but never emits a playbackStatusUpdate. The
+    // subsequent ontimeupdate events also stop after the media ends, so
+    // didJustFinish is never seen by the listener above. Poll every
+    // 200 ms as a fallback so ayah auto-advance works on web.
+    // ---------------------------------------------------------------
+    let endedPollId: ReturnType<typeof setInterval> | null = null;
+    if (Platform.OS === "web") {
+      endedPollId = setInterval(() => {
+        if (indexRef.current !== index) {
+          clearInterval(endedPollId!);
+          endedPollId = null;
+          return;
+        }
+        if (!isPlayingRef.current) return;
+        const dur = player.duration;
+        const cur = player.currentTime;
+        // Detect: loaded, previously playing, now stopped, at/near end.
+        if (dur > 0 && cur > 0 && !player.playing && cur >= dur - 0.5) {
+          clearInterval(endedPollId!);
+          endedPollId = null;
+          handleDidFinish();
+        }
+      }, 200);
     }
 
     return () => {
       sub.remove();
+      if (loadTimeoutId) clearTimeout(loadTimeoutId);
+      if (endedPollId) clearInterval(endedPollId);
     };
+    // surah.number and setPosition are accessed from closure; they are
+    // always in sync because getPlayer changes whenever the bundle
+    // (keyed on surah.number + reciterId) changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, getPlayer, ayahs.length]);
 
   // Drive the visual transition between verses based on the chosen mode.
@@ -727,6 +811,18 @@ export default function PlayerScreen() {
     if (a) safePlay(a);
   }, [settings.ambient]);
 
+  // Reciter change handler. Captures whether audio is currently playing so
+  // the audio effect (which runs after the bundle rebuilds) can auto-resume
+  // on the fresh player without requiring a manual tap.
+  const handleReciterChange = useCallback(
+    (id: ReciterId) => {
+      reciterChangedRef.current = isPlayingRef.current;
+      setAudioError(false);
+      setReciter(id);
+    },
+    [setReciter],
+  );
+
   // Wrap the ambient setters so that picking a sound (or nudging the volume)
   // counts as the user gesture that unlocks web audio AND triggers playback
   // immediately — even if recitation has never been started. This is what
@@ -763,6 +859,7 @@ export default function PlayerScreen() {
     grantUserGestureAndStartAmbient();
     if (hasFinished) {
       setHasFinished(false);
+      setAudioError(false);
       for (const p of bundle.players) {
         if (p) safeSeekZero(p);
       }
@@ -778,6 +875,8 @@ export default function PlayerScreen() {
       safePause(player);
       setIsPlaying(false);
     } else {
+      // Clear any previous error so the load-timeout restarts cleanly.
+      setAudioError(false);
       setIsLoading(true);
       safePlay(player);
       setIsPlaying(true);
@@ -1301,8 +1400,15 @@ export default function PlayerScreen() {
                 activeOpacity={0.85}
                 style={styles.playBtn}
               >
-                {isLoading && isPlaying ? (
+                {isLoading && isPlaying && !audioError ? (
                   <ActivityIndicator color="#000" size="small" />
+                ) : audioError ? (
+                  <SymbolIcon
+                    name="exclamationmark.triangle.fill"
+                    fallbackIonicon="warning"
+                    size={24}
+                    color="#c0392b"
+                  />
                 ) : (
                   <SymbolIcon
                     name={
@@ -1387,7 +1493,7 @@ export default function PlayerScreen() {
         onBackgroundChange={setBackground}
         onAmbientChange={handleAmbientChange}
         onAmbientVolumeChange={handleAmbientVolumeChange}
-        onReciterChange={setReciter}
+        onReciterChange={handleReciterChange}
         onAutoplayNextSurahChange={setAutoplayNextSurah}
         onBackgroundDimChange={setBackgroundDim}
         onSleepTimerChange={setSleepTimerMinutes}
@@ -1406,7 +1512,7 @@ export default function PlayerScreen() {
         open={reciterSheetOpen}
         onClose={() => setReciterSheetOpen(false)}
         reciterId={settings.reciterId}
-        onReciterChange={setReciter}
+        onReciterChange={handleReciterChange}
       />
     </View>
   );
