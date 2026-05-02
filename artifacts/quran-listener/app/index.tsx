@@ -1274,62 +1274,16 @@ export default function PlayerScreen() {
             const arFs = computeArabicFontSize(a.arabic.length);
             const arLh = computeArabicLineHeight(arFs, a.arabic.length);
             return (
-              <Animated.View
+              <AyahView
                 key={`${surah.number}-${a.number}`}
-                style={[
-                  StyleSheet.absoluteFill,
-                  { opacity: bundle.opacities[i] },
-                ]}
-              >
-                {/* ScrollView is always enabled so any verse that
-                    overflows the viewport (e.g. Al-Baqarah 282) can be
-                    scrolled. The font-scaling logic above still shrinks
-                    the longest ayahs, but scrolling is the safety net
-                    for screens too small to fit even the scaled font.
-                    Tap-to-wake-chrome is preserved by wrapping the
-                    content in a Pressable: a clean tap fires the inner
-                    onPress, while a drag is escalated to the ScrollView
-                    by the responder system. */}
-                <ScrollView
-                  contentContainerStyle={[
-                    styles.verseBox,
-                    { paddingVertical: 16 },
-                  ]}
-                  showsVerticalScrollIndicator={false}
-                  bounces={false}
-                  scrollEnabled
-                  keyboardShouldPersistTaps="always"
-                >
-                  <Pressable
-                    onPress={tapBackground}
-                    android_disableSound
-                    style={styles.verseInner}
-                  >
-                    <Text
-                      style={[
-                        styles.arabic,
-                        {
-                          fontSize: arFs,
-                          lineHeight: arLh,
-                          fontFamily: arabicFontFamily,
-                        },
-                      ]}
-                      allowFontScaling={false}
-                    >
-                      {a.arabic}
-                      {ayahMarker(a.number)}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.translation,
-                        { fontSize: translationFontSize },
-                      ]}
-                    >
-                      {a.translation}
-                    </Text>
-                  </Pressable>
-                </ScrollView>
-              </Animated.View>
+                ayah={a}
+                opacity={bundle.opacities[i]}
+                arabicFontFamily={arabicFontFamily}
+                arFs={arFs}
+                arLh={arLh}
+                translationFontSize={translationFontSize}
+                onTap={tapBackground}
+              />
             );
           })}
         </Animated.View>
@@ -1802,4 +1756,186 @@ const styles = StyleSheet.create({
     color: "#d4d4d4",
     letterSpacing: -0.3,
   },
+  ayahRevealContainer: {
+    flex: 1,
+    overflow: "hidden",
+  },
+  ayahRevealGradient: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 120,
+  },
 });
+
+// ─── AyahReveal ──────────────────────────────────────────────────────────────
+// Renders a single ayah (Arabic + translation). When the combined text is taller
+// than the available viewport, it:
+//   1. Shows a soft gradient mask at the bottom edge (hinting at overflow)
+//   2. After a calm initial reading pause, smoothly auto-scrolls the overflow
+//      content into view at a deliberate reading pace
+//   3. Fades the gradient mask out once the bottom is reached
+//
+// The user never needs to scroll manually. The effect feels like breathing text.
+
+const REVEAL_SCROLL_DP_PER_S = 38;      // scroll speed — calm, reading pace
+const REVEAL_MIN_DURATION_MS = 6000;    // floor: at least 6 s of scroll
+const REVEAL_START_DELAY_MS  = 2200;    // wait for crossfade (1400ms) + reading start
+const REVEAL_OVERFLOW_THRESHOLD = 28;   // ignore sub-pixel rounding noise
+
+type AyahViewProps = {
+  ayah: { arabic: string; translation: string; number: number; globalNumber: number };
+  opacity: Animated.Value;
+  arabicFontFamily: string;
+  arFs: number;
+  arLh: number;
+  translationFontSize: number;
+  onTap: () => void;
+};
+
+function AyahView({
+  ayah,
+  opacity,
+  arabicFontFamily,
+  arFs,
+  arLh,
+  translationFontSize,
+  onTap,
+}: AyahViewProps) {
+  const scrollRef    = useRef<ScrollView>(null);
+  const viewportH    = useRef(0);
+  const contentH     = useRef(0);
+  const scrollY      = useRef(new Animated.Value(0)).current;
+  const gradOpacity  = useRef(new Animated.Value(0)).current;
+  const hasStarted   = useRef(false);
+  const animRef      = useRef<Animated.CompositeAnimation | null>(null);
+  const timerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMounted    = useRef(true);
+
+  // Drive programmatic scroll: Animated.Value → scrollTo (no native driver so
+  // JS-thread animation, but the scroll rate is slow enough that JS is fine).
+  useEffect(() => {
+    const listenerId = scrollY.addListener(({ value }) => {
+      scrollRef.current?.scrollTo({ y: value, animated: false });
+    });
+    return () => scrollY.removeListener(listenerId);
+  }, [scrollY]);
+
+  // Cleanup on unmount (component exits when its ayah is no longer live).
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      animRef.current?.stop();
+    };
+  }, []);
+
+  // Reset all animation state when the ayah this instance represents changes.
+  // Normally each ayah gets its own component instance (keyed by globalNumber),
+  // but this is a safety net against any edge-case reuse.
+  useEffect(() => {
+    hasStarted.current = false;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    animRef.current?.stop(); animRef.current = null;
+    scrollY.setValue(0);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    gradOpacity.setValue(0);
+  }, [ayah.globalNumber, gradOpacity, scrollY]);
+
+  // Called after both viewport and content heights are known. Idempotent.
+  const maybeStartReveal = useCallback(() => {
+    if (hasStarted.current) return;
+    if (viewportH.current <= 0 || contentH.current <= 0) return;
+    const overflow = contentH.current - viewportH.current;
+    if (overflow <= REVEAL_OVERFLOW_THRESHOLD) return;
+
+    hasStarted.current = true;
+
+    // Show the gradient fade immediately so the user knows there is more text.
+    gradOpacity.setValue(1);
+
+    // After the initial reading pause, begin the slow scroll.
+    timerRef.current = setTimeout(() => {
+      if (!isMounted.current) return;
+
+      const duration = Math.max(
+        (overflow / REVEAL_SCROLL_DP_PER_S) * 1000,
+        REVEAL_MIN_DURATION_MS,
+      );
+
+      const anim = Animated.timing(scrollY, {
+        toValue: overflow,
+        duration,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: false,
+      });
+      animRef.current = anim;
+
+      anim.start(({ finished }) => {
+        if (!finished || !isMounted.current) return;
+        // Dissolve the gradient once the bottom is fully revealed.
+        Animated.timing(gradOpacity, {
+          toValue: 0,
+          duration: 700,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, REVEAL_START_DELAY_MS);
+  }, [gradOpacity, scrollY]);
+
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>
+      <View
+        style={styles.ayahRevealContainer}
+        onLayout={(e) => {
+          viewportH.current = e.nativeEvent.layout.height;
+          maybeStartReveal();
+        }}
+      >
+        {/* scrollEnabled=false: all scrolling is programmatic via scrollY */}
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[styles.verseBox, { paddingVertical: 16 }]}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          scrollEnabled={false}
+          keyboardShouldPersistTaps="always"
+          onContentSizeChange={(_, h) => {
+            contentH.current = h;
+            maybeStartReveal();
+          }}
+        >
+          <Pressable onPress={onTap} android_disableSound style={styles.verseInner}>
+            <Text
+              style={[
+                styles.arabic,
+                { fontSize: arFs, lineHeight: arLh, fontFamily: arabicFontFamily },
+              ]}
+              allowFontScaling={false}
+            >
+              {ayah.arabic}
+              {ayahMarker(ayah.number)}
+            </Text>
+            <Text style={[styles.translation, { fontSize: translationFontSize }]}>
+              {ayah.translation}
+            </Text>
+          </Pressable>
+        </ScrollView>
+
+        {/* Soft gradient mask — fades overflow text into darkness at the bottom
+            edge, making the clip feel intentional rather than abrupt. Mirroring
+            the treatment Apple uses in the Podcasts / Books reading experience. */}
+        <Animated.View
+          style={[styles.ayahRevealGradient, { opacity: gradOpacity }]}
+          pointerEvents="none"
+        >
+          <LinearGradient
+            colors={["transparent", "rgba(0,0,0,0.93)"]}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+      </View>
+    </Animated.View>
+  );
+}

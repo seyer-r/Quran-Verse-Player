@@ -175,6 +175,18 @@ The font covers U+E001–U+E114 (114 glyphs, one per surah). U+E000 and U+E115 e
 
 **`nameArabic` field preserved**: still stored in `quran.json` and `quran.ts` — used for accessibility labels. The `data/quran.ts` type and `quran.json` are unchanged.
 
+### Auto-reveal for long ayahs
+Long ayahs that exceed the visible stage area no longer require manual scrolling. Instead:
+
+1. **Gradient mask** — a `LinearGradient` (transparent → `rgba(0,0,0,0.93)`, 120dp tall) appears instantly at the bottom edge whenever content overflows by more than 28dp. This signals to the reader that there is more text below without any jarring clip.
+2. **Auto-scroll** — after a 2.2 s initial reading pause (which covers the 1400 ms crossfade + a natural reading start), the text smoothly scrolls to the bottom at ~38 dp/s, with a minimum duration of 6 s regardless of overflow amount. Easing is `Easing.inOut(Easing.cubic)` so it starts gently, accelerates, then decelerates — the "breathing" feel.
+3. **Gradient fade-out** — once the bottom is fully revealed, the gradient mask dissolves over 700 ms.
+4. **User never touches the screen** — `scrollEnabled={false}` on the ScrollView; scrolling is 100% programmatic via an `Animated.Value` listener that drives `scrollRef.current.scrollTo({ y, animated: false })`.
+
+**Implementation**: `AyahView` component defined at the bottom of `app/index.tsx` (after `styles`). Key refs: `scrollY` (Animated.Value, `useNativeDriver: false` — drives scroll), `gradOpacity` (Animated.Value, `useNativeDriver: true` — drives gradient). Resets on `ayah.globalNumber` change and unmount cleanup. Short ayahs (no overflow) show no gradient and trigger no animation.
+
+**Coexistence with crossfade**: The 2.2 s delay ensures the 1400 ms crossfade (700 ms out + 700 ms in) always finishes before any scroll begins. Skipping mid-scroll is safe — the `AyahView` for the outgoing ayah cancels its timer/animation on unmount.
+
 ### Playback speed control
 Six speeds: 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2× (default 1×). Persisted via `settings.playbackSpeed` (type `PlaybackSpeed`, stored in AsyncStorage v5 key, backward-compat defaults to 1 if missing or invalid).
 
