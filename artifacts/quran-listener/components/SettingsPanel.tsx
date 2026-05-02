@@ -1,4 +1,5 @@
 import { SymbolIcon } from "@/components/SymbolIcon";
+import { VideoSwatch } from "@/components/VideoBackground";
 import { Image } from "expo-image";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -244,7 +245,10 @@ export function SettingsPanel({
                     style={styles.bgItem}
                   >
                     <View style={styles.bgSwatch}>
-                      {bg.source ? (
+                      {bg.videoUrl ? (
+                        // Live video swatch — plays a tiny looping preview
+                        <VideoSwatch url={bg.videoUrl} />
+                      ) : bg.source ? (
                         <Image
                           source={bg.source}
                           style={StyleSheet.absoluteFill}
@@ -264,6 +268,12 @@ export function SettingsPanel({
                             color="#525252"
                             style={styles.bgNoneIcon}
                           />
+                        </View>
+                      )}
+                      {/* "Live" badge on video backgrounds */}
+                      {bg.videoUrl && !selected && (
+                        <View style={styles.bgLiveBadge} pointerEvents="none">
+                          <Text style={styles.bgLiveBadgeText}>LIVE</Text>
                         </View>
                       )}
                       {selected && (
@@ -748,6 +758,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#e8c078",
     alignItems: "center",
     justifyContent: "center",
+  },
+  bgLiveBadge: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  bgLiveBadgeText: {
+    fontSize: 8,
+    fontWeight: "700",
+    color: "#e8c078",
+    letterSpacing: 0.5,
   },
   bgLabel: {
     marginTop: 8,

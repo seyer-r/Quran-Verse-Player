@@ -35,6 +35,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ReciterSheet } from "@/components/ReciterSheet";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SurahPicker } from "@/components/SurahPicker";
+import { VideoBackground } from "@/components/VideoBackground";
 import { AMBIENT_OPTIONS, type AmbientId, getAmbient } from "@/data/ambient";
 import { getBackground } from "@/data/backgrounds";
 import {
@@ -1241,7 +1242,7 @@ export default function PlayerScreen() {
   const bottomPad =
     Platform.OS === "web" ? Math.max(insets.bottom, 24) : insets.bottom + 12;
 
-  const hasBg = !!activeBgOpt.source;
+  const hasBg = !!activeBgOpt.source || !!activeBgOpt.videoUrl;
 
   // Overall progress across the whole surah (only used for long surahs that
   // fall back to a single progress bar).
@@ -1250,19 +1251,21 @@ export default function PlayerScreen() {
 
   return (
     <View style={styles.root}>
-      {/* === Background image layer === */}
+      {/* === Background layer (static image OR live video) === */}
       <Animated.View
         style={[StyleSheet.absoluteFill, { opacity: bgFade }]}
         pointerEvents="none"
       >
-        {hasBg && activeBgOpt.source && (
+        {activeBgOpt.videoUrl ? (
+          <VideoBackground url={activeBgOpt.videoUrl} />
+        ) : hasBg && activeBgOpt.source ? (
           <Image
             source={activeBgOpt.source}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
             transition={0}
           />
-        )}
+        ) : null}
         <LinearGradient
           colors={
             hasBg
