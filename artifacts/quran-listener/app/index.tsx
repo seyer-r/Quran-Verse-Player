@@ -20,6 +20,7 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -129,6 +130,7 @@ export default function PlayerScreen() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reciterSheetOpen, setReciterSheetOpen] = useState(false);
+  const [verseMenuVisible, setVerseMenuVisible] = useState(false);
   const [pickerInitialStep, setPickerInitialStep] = useState<
     "surah" | "ayah"
   >("surah");
@@ -1388,6 +1390,10 @@ export default function PlayerScreen() {
                 arLh={arLh}
                 translationFontSize={translationFontSize}
                 onTap={tapBackground}
+                onLongPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setVerseMenuVisible(true);
+                }}
               />
             );
           })}
@@ -1565,31 +1571,9 @@ export default function PlayerScreen() {
 
             <View style={styles.restartCol}>
               <TouchableOpacity
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setRepeatAyah(!settings.repeatAyah);
-                }}
-                hitSlop={8}
-                activeOpacity={0.7}
-                accessibilityLabel={
-                  settings.repeatAyah
-                    ? "Repeat ayah: on. Tap to turn off."
-                    : "Repeat ayah: off. Tap to loop current ayah."
-                }
-                accessibilityState={{ selected: settings.repeatAyah }}
-              >
-                <SymbolIcon
-                  name="repeat.1"
-                  fallbackIonicon="repeat"
-                  size={20}
-                  color={settings.repeatAyah ? "#e8c078" : "#8e8e93"}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
                 onPress={restart}
                 hitSlop={8}
                 activeOpacity={0.6}
-                style={styles.restartBtn}
               >
                 <SymbolIcon
                   name="arrow.counterclockwise"
@@ -1641,6 +1625,89 @@ export default function PlayerScreen() {
         playbackSpeed={settings.playbackSpeed}
         onPlaybackSpeedChange={setPlaybackSpeed}
       />
+
+      {/* ── Verse context menu (long-press) ───────────────────────────────── */}
+      <Modal
+        visible={verseMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setVerseMenuVisible(false)}
+      >
+        <Pressable
+          style={styles.verseMenuOverlay}
+          onPress={() => setVerseMenuVisible(false)}
+        >
+          {/* Stop tap inside the card from closing the overlay */}
+          <Pressable style={styles.verseMenuCard} onPress={() => {}}>
+            {/* Apple-style content preview */}
+            <View style={styles.verseMenuPreview}>
+              <Text style={styles.verseMenuPreviewArabic} numberOfLines={2}>
+                {ayahs[index].arabic}
+              </Text>
+              <Text style={styles.verseMenuPreviewMeta}>
+                {surah.name} · Ayah {ayahs[index].number}
+              </Text>
+            </View>
+
+            <View style={styles.verseMenuDivider} />
+
+            {/* Repeat ayah */}
+            <TouchableOpacity
+              style={styles.verseMenuRow}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setRepeatAyah(!settings.repeatAyah);
+                setVerseMenuVisible(false);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.verseMenuRowLabel,
+                settings.repeatAyah && styles.verseMenuRowLabelActive,
+              ]}>
+                {settings.repeatAyah ? "Stop Repeating" : "Repeat Ayah"}
+              </Text>
+              <Text style={[
+                styles.verseMenuRowIcon,
+                settings.repeatAyah && styles.verseMenuRowIconActive,
+              ]}>
+                ↺
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.verseMenuDivider} />
+
+            {/* Copy Arabic */}
+            <TouchableOpacity
+              style={styles.verseMenuRow}
+              onPress={() => {
+                if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
+                  navigator.clipboard.writeText(ayahs[index].arabic).catch(() => {});
+                }
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                setVerseMenuVisible(false);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.verseMenuRowLabel}>Copy Arabic</Text>
+              <Text style={styles.verseMenuRowIcon}>⎘</Text>
+            </TouchableOpacity>
+
+            <View style={styles.verseMenuDivider} />
+
+            {/* Cancel */}
+            <TouchableOpacity
+              style={[styles.verseMenuRow, { justifyContent: "center" }]}
+              onPress={() => setVerseMenuVisible(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.verseMenuRowLabel, { color: "#8e8e93" }]}>
+                Dismiss
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1856,10 +1923,59 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "flex-end",
     justifyContent: "center",
-    gap: 12,
   },
-  restartBtn: {
-    marginTop: 0,
+  verseMenuOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  verseMenuCard: {
+    width: 300,
+    backgroundColor: "#1c1c1e",
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  verseMenuPreview: {
+    padding: 16,
+    alignItems: "center",
+    gap: 6,
+  },
+  verseMenuPreviewArabic: {
+    color: "#ffffff",
+    fontSize: 22,
+    textAlign: "center",
+    lineHeight: 38,
+    writingDirection: "rtl",
+  },
+  verseMenuPreviewMeta: {
+    color: "#8e8e93",
+    fontSize: 12,
+  },
+  verseMenuDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "#3a3a3c",
+    marginHorizontal: 0,
+  },
+  verseMenuRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+  },
+  verseMenuRowLabel: {
+    color: "#ffffff",
+    fontSize: 16,
+  },
+  verseMenuRowLabelActive: {
+    color: "#e8c078",
+  },
+  verseMenuRowIcon: {
+    color: "#8e8e93",
+    fontSize: 18,
+  },
+  verseMenuRowIconActive: {
+    color: "#e8c078",
   },
   ayahRevealContainer: {
     flex: 1,
@@ -1908,6 +2024,7 @@ type AyahViewProps = {
   arLh: number;
   translationFontSize: number;
   onTap: () => void;
+  onLongPress?: () => void;
 };
 
 function AyahView({
@@ -1918,6 +2035,7 @@ function AyahView({
   arLh,
   translationFontSize,
   onTap,
+  onLongPress,
 }: AyahViewProps) {
   const topFade    = useRef(new Animated.Value(0)).current;
   const bottomFade = useRef(new Animated.Value(0)).current;
@@ -1991,7 +2109,7 @@ function AyahView({
             maybeShowInitialBottom();
           }}
         >
-          <Pressable onPress={onTap} android_disableSound style={styles.verseInner}>
+          <Pressable onPress={onTap} onLongPress={onLongPress} delayLongPress={500} android_disableSound style={styles.verseInner}>
             <Text
               style={[
                 styles.arabic,
