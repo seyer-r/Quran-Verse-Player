@@ -165,6 +165,15 @@ export default function PlayerScreen() {
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const HIDE_DELAY_MS = 3500;
 
+  // ── Surah header crossfade (Apple Music–style content transition) ──────────
+  // `displayedSurah` lags one animation frame behind `surah` so the header
+  // can fade out the old name before swapping data and fading in the new one.
+  const [displayedSurah, setDisplayedSurah] = useState(surah);
+  const headerContentOpacity = useRef(new Animated.Value(1)).current;
+  const headerContentSlide = useRef(new Animated.Value(0)).current;
+  // Skip the animation on initial mount — only run when surah actually changes.
+  const isFirstSurahRender = useRef(true);
+
   // ------------------------------------------------------------------
   // Sleep timer — one-shot session-only timer. The user picks 10 / 20 /
   // 30 / 60 minutes from the settings panel; we capture the absolute
@@ -320,6 +329,55 @@ export default function PlayerScreen() {
     if (chromeVisible) scheduleHide();
     else clearHideTimer();
   }, [chromeVisible, chromeOpacity, scheduleHide, clearHideTimer]);
+
+  // ── Surah header crossfade effect ─────────────────────────────────────────
+  // Phase 1 (160 ms): fade + slide old content upward and out
+  // Phase 2: swap `displayedSurah`, reset slide to +10 pt below
+  // Phase 3 (spring): new content springs up while fading in
+  // useNativeDriver:true → smooth 60fps on Android, iOS, and web alike.
+  useEffect(() => {
+    if (isFirstSurahRender.current) {
+      isFirstSurahRender.current = false;
+      // Ensure displayedSurah is in sync on first hydration
+      setDisplayedSurah(surah);
+      return;
+    }
+    Animated.parallel([
+      Animated.timing(headerContentOpacity, {
+        toValue: 0,
+        duration: 160,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(headerContentSlide, {
+        toValue: -8,
+        duration: 160,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (!finished) return;
+      setDisplayedSurah(surah);
+      headerContentSlide.setValue(10);
+      Animated.parallel([
+        Animated.timing(headerContentOpacity, {
+          toValue: 1,
+          duration: 280,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.spring(headerContentSlide, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 280,
+          friction: 28,
+        }),
+      ]).start();
+    });
+  // surah.number is stable while surah object ref may change; dep on number
+  // ensures we animate exactly once per surah change, never on re-renders.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surah.number]);
 
   useEffect(() => {
     if (isPlaying) {
@@ -1452,52 +1510,74 @@ export default function PlayerScreen() {
           ]}
           pointerEvents={chromeVisible ? "auto" : "none"}
         >
-          <TouchableOpacity
-            style={styles.headerLeft}
-            onPress={() => {
-              pokeControls();
-              setPickerInitialStep("surah");
-              setPickerOpen(true);
-            }}
-            accessibilityLabel="Choose surah"
-            activeOpacity={0.7}
+          {/* Inner animated layer — crossfades + slides when surah changes,
+              matching the Apple Music "Now Playing" content transition. */}
+          <Animated.View
+            style={[
+              styles.headerInner,
+              {
+                opacity: headerContentOpacity,
+                transform: [{ translateY: headerContentSlide }],
+              },
+            ]}
+            pointerEvents="box-none"
           >
-            <Text style={[styles.eyebrow, secondaryOverride]}>Surah {surah.number}</Text>
-            <View style={styles.headerLeftTitleRow}>
-              <Text style={styles.surahLabel} numberOfLines={1}>
-                {surah.nameLatin}{" "}
-                <Text style={[styles.surahMeaning, secondaryOverride]}>— {surah.meaning}</Text>
-              </Text>
-              <SymbolIcon
-                name="chevron.down"
-                fallbackIonicon="chevron-down"
-                size={14}
-                color="#737373"
-                style={styles.chev}
-              />
-            </View>
-          </TouchableOpacity>
-          <View style={styles.headerRight}>
-            <SurahNameGlyph
-              surah={surah}
-              size={28}
-              color="#f5f5f5"
-              style={styles.surahArabicGlyph}
-            />
             <TouchableOpacity
+              style={styles.headerLeft}
               onPress={() => {
                 pokeControls();
-                grantUserGestureAndStartAmbient();
-                setSettingsOpen(true);
+                setPickerInitialStep("surah");
+                setPickerOpen(true);
               }}
-              accessibilityLabel="Settings"
-              hitSlop={10}
-              style={styles.iconBtn}
+              accessibilityLabel="Choose surah"
               activeOpacity={0.7}
             >
-              <SymbolIcon name="gearshape" fallbackIonicon="settings-outline" size={20} color="#d4d4d4" />
+              <Text style={[styles.eyebrow, secondaryOverride]}>
+                Surah {displayedSurah.number}
+              </Text>
+              <View style={styles.headerLeftTitleRow}>
+                <Text style={styles.surahLabel} numberOfLines={1}>
+                  {displayedSurah.nameLatin}{" "}
+                  <Text style={[styles.surahMeaning, secondaryOverride]}>
+                    — {displayedSurah.meaning}
+                  </Text>
+                </Text>
+                <SymbolIcon
+                  name="chevron.down"
+                  fallbackIonicon="chevron-down"
+                  size={14}
+                  color="#737373"
+                  style={styles.chev}
+                />
+              </View>
             </TouchableOpacity>
-          </View>
+            <View style={styles.headerRight}>
+              <SurahNameGlyph
+                surah={displayedSurah}
+                size={28}
+                color="#f5f5f5"
+                style={styles.surahArabicGlyph}
+              />
+              <TouchableOpacity
+                onPress={() => {
+                  pokeControls();
+                  grantUserGestureAndStartAmbient();
+                  setSettingsOpen(true);
+                }}
+                accessibilityLabel="Settings"
+                hitSlop={10}
+                style={styles.iconBtn}
+                activeOpacity={0.7}
+              >
+                <SymbolIcon
+                  name="gearshape"
+                  fallbackIonicon="settings-outline"
+                  size={20}
+                  color="#d4d4d4"
+                />
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
         </Animated.View>
 
         {/* === Ayah counter — tap to open picker at current ayah === */}
@@ -1982,11 +2062,15 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   header: {
+    paddingHorizontal: 24,
+    paddingBottom: 8,
+  },
+  // Sits inside `header`; mirrors the original row layout but is the target
+  // for the per-surah crossfade + slide animation.
+  headerInner: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingHorizontal: 24,
-    paddingBottom: 8,
   },
   headerLeft: {
     flex: 1,

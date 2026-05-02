@@ -515,10 +515,13 @@ function SurahListPanel({
       </View>
 
       {/* ── Surah list ─────────────────────────────────────────────────────── */}
-      <FlatList
+      {/* Animated.FlatList is required when using useNativeDriver:true on
+          onScroll — plain FlatList (VirtualizedList) does not support it and
+          crashes on native (iOS / Android). Web falls back to JS-driver fine. */}
+      <Animated.FlatList
         ref={listRef}
         data={filtered}
-        keyExtractor={(s) => String(s.number)}
+        keyExtractor={(s: Surah) => String(s.number)}
         keyboardShouldPersistTaps="handled"
         initialNumToRender={16}
         windowSize={11}
