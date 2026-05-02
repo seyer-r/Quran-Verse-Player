@@ -30,6 +30,7 @@ import {
   TRANSITIONS,
   type TransitionMode,
 } from "@/lib/transitions";
+import { RECITERS, type ReciterId } from "@/data/reciters";
 
 const AMBIENT_IONICONS: Record<AmbientId, keyof typeof Ionicons.glyphMap> = {
   off: "ban",
@@ -47,6 +48,7 @@ interface SettingsPanelProps {
   background: BackgroundId;
   ambient: AmbientId;
   ambientVolume: number;
+  reciterId: ReciterId;
   autoplayNextSurah: boolean;
   backgroundDim: boolean;
   sleepTimerMinutes: number | null;
@@ -54,6 +56,7 @@ interface SettingsPanelProps {
   onBackgroundChange: (id: BackgroundId) => void;
   onAmbientChange: (id: AmbientId) => void;
   onAmbientVolumeChange: (vol: number) => void;
+  onReciterChange: (id: ReciterId) => void;
   onAutoplayNextSurahChange: (next: boolean) => void;
   onBackgroundDimChange: (next: boolean) => void;
   onSleepTimerChange: (minutes: number | null) => void;
@@ -71,48 +74,6 @@ const ANIM_MS = 320;
 const SHEET_MAX_HEIGHT_FRACTION = 0.92;
 const SWIPE_CLOSE_THRESHOLD = 90;
 
-function VolumeSlider({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  const trackWidthRef = useRef(0);
-  const pan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (e) => {
-        const x = e.nativeEvent.locationX;
-        onChange(Math.max(0, Math.min(1, x / (trackWidthRef.current || 1))));
-      },
-      onPanResponderMove: (e) => {
-        const x = e.nativeEvent.locationX;
-        onChange(Math.max(0, Math.min(1, x / (trackWidthRef.current || 1))));
-      },
-    }),
-  ).current;
-
-  return (
-    <View
-      style={styles.sliderOuter}
-      onLayout={(e) => {
-        trackWidthRef.current = e.nativeEvent.layout.width;
-      }}
-      {...pan.panHandlers}
-      accessibilityRole="adjustable"
-      accessibilityLabel="Ambient volume"
-      accessibilityValue={{ min: 0, max: 100, now: Math.round(value * 100) }}
-    >
-      <View style={styles.sliderTrack}>
-        <View style={[styles.sliderFill, { width: `${value * 100}%` as any }]} />
-      </View>
-      <View style={[styles.sliderThumb, { left: `${value * 100}%` as any }]} />
-    </View>
-  );
-}
-
 export function SettingsPanel({
   open,
   onClose,
@@ -120,6 +81,7 @@ export function SettingsPanel({
   background,
   ambient,
   ambientVolume,
+  reciterId,
   autoplayNextSurah,
   backgroundDim,
   sleepTimerMinutes,
@@ -127,6 +89,7 @@ export function SettingsPanel({
   onBackgroundChange,
   onAmbientChange,
   onAmbientVolumeChange,
+  onReciterChange,
   onAutoplayNextSurahChange,
   onBackgroundDimChange,
   onSleepTimerChange,
@@ -427,9 +390,74 @@ export function SettingsPanel({
                     style={{ marginLeft: "auto" } as any}
                   />
                 </View>
-                <VolumeSlider value={ambientVolume} onChange={onAmbientVolumeChange} />
+                <View style={styles.volumeRow}>
+                  {([0.25, 0.5, 0.75, 1] as const).map((v) => (
+                    <TouchableOpacity
+                      key={v}
+                      onPress={() => onAmbientVolumeChange(v)}
+                      hitSlop={8}
+                      style={styles.volumeBarTouch}
+                      accessibilityLabel={`Volume ${Math.round(v * 100)}%`}
+                      activeOpacity={0.7}
+                    >
+                      <View
+                        style={[
+                          styles.volumeBar,
+                          { height: 12 + v * 28 },
+                          ambientVolume >= v && styles.volumeBarActive,
+                        ]}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
             )}
+
+            {/* === RECITER === */}
+            <SectionHeader title="Reciter" style={{ marginTop: 28 }} />
+            <View style={styles.group}>
+              {RECITERS.map((r, i) => {
+                const selected = r.id === reciterId;
+                const isLast = i === RECITERS.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={r.id}
+                    onPress={() => onReciterChange(r.id)}
+                    activeOpacity={0.6}
+                    style={[styles.row, !isLast && styles.rowDivider]}
+                    accessibilityLabel={r.name}
+                  >
+                    <View style={styles.rowIcon}>
+                      <SymbolIcon
+                        name="mic.fill"
+                        fallbackIonicon="mic"
+                        size={18}
+                        color={selected ? "#f5f5f5" : "#737373"}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.rowLabel,
+                        selected && styles.rowLabelSelected,
+                      ]}
+                    >
+                      {r.name}
+                    </Text>
+                    <View style={styles.rowAccessory}>
+                      {selected && (
+                        <SymbolIcon
+                          name="checkmark"
+                          fallbackIonicon="checkmark"
+                          size={17}
+                          color="#e8c078"
+                          weight="semibold"
+                        />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
             {/* === PLAYBACK === */}
             <SectionHeader title="Playback" style={{ marginTop: 28 }} />
@@ -810,37 +838,24 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     flex: 1,
   },
-  sliderOuter: {
-    height: 28,
-    justifyContent: "center",
+  volumeRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 5,
   },
-  sliderTrack: {
-    height: 6,
+  volumeBarTouch: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingVertical: 4,
+  },
+  volumeBar: {
+    width: "100%",
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.15)",
   },
-  sliderFill: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    bottom: 0,
+  volumeBarActive: {
     backgroundColor: "#e8c078",
-    borderRadius: 3,
-  },
-  sliderThumb: {
-    position: "absolute",
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#fff",
-    top: -8,
-    marginLeft: -11,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
   },
 
   sleepHint: {

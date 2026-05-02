@@ -38,10 +38,10 @@ import {
   ayahMarker,
   audioUrlForGlobalAyah,
   getSurah,
-  reciter,
   TOTAL_SURAHS,
   validateQuran,
 } from "@/data/quran";
+import { getReciter } from "@/data/reciters";
 import { getTransition } from "@/lib/transitions";
 import { getArabicFont, useSettings } from "@/lib/useSettings";
 
@@ -68,6 +68,7 @@ export default function PlayerScreen() {
     setBackground,
     setAmbient,
     setAmbientVolume,
+    setReciter,
     setAutoplayNextSurah,
     setBackgroundDim,
     setPosition,
@@ -278,7 +279,10 @@ export default function PlayerScreen() {
       let p = bundle.players[i];
       if (!p) {
         p = createAudioPlayer({
-          uri: audioUrlForGlobalAyah(ayahs[i].globalNumber),
+          uri: audioUrlForGlobalAyah(
+            ayahs[i].globalNumber,
+            getReciter(settings.reciterId).cdnIdentifier,
+          ),
         });
         bundle.players[i] = p;
       }
@@ -1211,18 +1215,14 @@ export default function PlayerScreen() {
               {ayahs.map((a, i) => {
                 const fill = i < index ? 100 : i === index ? progress : 0;
                 return (
-                  <TouchableOpacity
+                  <View
                     key={a.number}
                     style={styles.progressTrack}
-                    onPress={() => setIndex(i)}
-                    activeOpacity={0.7}
-                    hitSlop={4}
-                    accessibilityLabel={`Go to ayah ${a.number}`}
                   >
                     <View
                       style={[styles.progressFill, { width: `${fill}%` }]}
                     />
-                  </TouchableOpacity>
+                  </View>
                 );
               })}
             </View>
@@ -1243,7 +1243,7 @@ export default function PlayerScreen() {
             <View style={styles.reciterCol}>
               <Text style={styles.reciterEyebrow}>RECITER</Text>
               <Text style={styles.reciterName} numberOfLines={1}>
-                {reciter}
+                {getReciter(settings.reciterId).name}
               </Text>
             </View>
 
@@ -1357,6 +1357,7 @@ export default function PlayerScreen() {
         background={settings.background}
         ambient={settings.ambient}
         ambientVolume={settings.ambientVolume}
+        reciterId={settings.reciterId}
         autoplayNextSurah={settings.autoplayNextSurah}
         backgroundDim={settings.backgroundDim}
         sleepTimerMinutes={sleepDurationMin}
@@ -1364,6 +1365,7 @@ export default function PlayerScreen() {
         onBackgroundChange={setBackground}
         onAmbientChange={handleAmbientChange}
         onAmbientVolumeChange={handleAmbientVolumeChange}
+        onReciterChange={setReciter}
         onAutoplayNextSurahChange={setAutoplayNextSurah}
         onBackgroundDimChange={setBackgroundDim}
         onSleepTimerChange={setSleepTimerMinutes}

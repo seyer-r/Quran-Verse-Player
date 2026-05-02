@@ -523,7 +523,7 @@ function AyahWheelPanel({
       </View>
 
       <View style={styles.surahCardWrap}>
-        <Text style={styles.surahCardEyebrow}>SURAH {surah.number}</Text>
+        <Text style={styles.surahCardEyebrow}>Surah {surah.number}</Text>
         <Text style={styles.surahCardLatin} numberOfLines={1}>
           {surah.nameLatin}
         </Text>
@@ -536,7 +536,7 @@ function AyahWheelPanel({
       </View>
 
       <View style={styles.previewWrap}>
-        <Text style={styles.previewLabel}>AYAH {draftAyah}</Text>
+        <Text style={styles.previewLabel}>Ayah {draftAyah}</Text>
         <Text
           style={styles.previewArabic}
           numberOfLines={2}
@@ -683,12 +683,12 @@ function WheelPicker({
       {/* Top fade — masks the off-center items into the sheet background */}
       <LinearGradient
         pointerEvents="none"
-        colors={["#0a0a0a", "rgba(10,10,10,0)"]}
+        colors={["#1c1c1e", "rgba(28,28,30,0)"]}
         style={[styles.wheelFadeTop, { height: PAD_ITEMS * ITEM_HEIGHT }]}
       />
       <LinearGradient
         pointerEvents="none"
-        colors={["rgba(10,10,10,0)", "#0a0a0a"]}
+        colors={["rgba(28,28,30,0)", "#1c1c1e"]}
         style={[styles.wheelFadeBottom, { height: PAD_ITEMS * ITEM_HEIGHT }]}
       />
     </View>
@@ -747,7 +747,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: "#0a0a0a",
+    backgroundColor: "#1c1c1e",
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     overflow: "hidden",
@@ -757,9 +757,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    marginTop: -6,
-    marginBottom: 4,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    marginTop: 10,
+    marginBottom: 6,
   },
   panelsViewport: {
     flex: 1,
@@ -807,8 +807,8 @@ const styles = StyleSheet.create({
   },
   backBtnText: {
     color: "#d4d4d4",
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 17,
+    fontWeight: "400",
     marginLeft: 2,
   },
 
@@ -918,9 +918,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   surahCardEyebrow: {
-    fontSize: 10,
-    letterSpacing: 3,
-    color: "#737373",
+    fontSize: 12,
+    letterSpacing: 0,
+    color: "#8e8e93",
     fontWeight: "500",
     marginBottom: 6,
   },
@@ -940,8 +940,8 @@ const styles = StyleSheet.create({
   },
   surahCardMeta: {
     marginTop: 8,
-    fontSize: 12,
-    color: "#737373",
+    fontSize: 13,
+    color: "#8e8e93",
   },
 
   // Live verse preview
@@ -955,9 +955,9 @@ const styles = StyleSheet.create({
     minHeight: 110,
   },
   previewLabel: {
-    fontSize: 10,
-    letterSpacing: 3,
-    color: "#a3a3a3",
+    fontSize: 12,
+    letterSpacing: 0,
+    color: "#8e8e93",
     fontWeight: "500",
     marginBottom: 8,
   },
@@ -972,7 +972,7 @@ const styles = StyleSheet.create({
   },
   previewTranslation: {
     marginTop: 10,
-    color: "#a3a3a3",
+    color: "#8e8e93",
     fontSize: 13,
     lineHeight: 18,
   },
@@ -1030,7 +1030,7 @@ const styles = StyleSheet.create({
   },
   confirmBtnText: {
     color: "#0a0a0a",
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: "600",
     letterSpacing: -0.2,
   },

@@ -13,6 +13,11 @@ import {
 } from "@/data/backgrounds";
 import { getSurah, TOTAL_SURAHS } from "@/data/quran";
 import {
+  DEFAULT_RECITER,
+  RECITERS,
+  type ReciterId,
+} from "@/data/reciters";
+import {
   DEFAULT_TRANSITION,
   type TransitionMode,
   TRANSITIONS,
@@ -108,6 +113,8 @@ export interface Settings {
   backgroundDim: boolean;
   /** Which Arabic typeface to render the verse body in. */
   arabicFont: ArabicFontId;
+  /** Which reciter to stream audio from. */
+  reciterId: ReciterId;
 }
 
 const DEFAULT_AUTOPLAY_NEXT_SURAH = true;
@@ -123,6 +130,7 @@ const defaultSettings: Settings = {
   autoplayNextSurah: DEFAULT_AUTOPLAY_NEXT_SURAH,
   backgroundDim: DEFAULT_BACKGROUND_DIM,
   arabicFont: DEFAULT_ARABIC_FONT,
+  reciterId: DEFAULT_RECITER,
 };
 
 const isValidTransition = (v: unknown): v is TransitionMode =>
@@ -158,6 +166,8 @@ const coerceBackgroundDim = (v: unknown): boolean =>
   typeof v === "boolean" ? v : DEFAULT_BACKGROUND_DIM;
 const isValidArabicFont = (v: unknown): v is ArabicFontId =>
   typeof v === "string" && ARABIC_FONTS.some((f) => f.id === v);
+const isValidReciter = (v: unknown): v is ReciterId =>
+  typeof v === "string" && RECITERS.some((r) => r.id === v);
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -190,6 +200,9 @@ export function useSettings() {
             arabicFont: isValidArabicFont(parsed.arabicFont)
               ? parsed.arabicFont
               : DEFAULT_ARABIC_FONT,
+            reciterId: isValidReciter(parsed.reciterId)
+              ? parsed.reciterId
+              : DEFAULT_RECITER,
           });
         }
       } catch {
@@ -224,6 +237,8 @@ export function useSettings() {
     setSettings((s) => ({ ...s, backgroundDim }));
   const setArabicFont = (arabicFont: ArabicFontId) =>
     setSettings((s) => ({ ...s, arabicFont }));
+  const setReciter = (reciterId: ReciterId) =>
+    setSettings((s) => ({ ...s, reciterId }));
 
   /**
    * Atomically update both surah and ayah. The ayah is clamped to the new
@@ -254,6 +269,7 @@ export function useSettings() {
     setBackground,
     setAmbient,
     setAmbientVolume,
+    setReciter,
     setAutoplayNextSurah,
     setBackgroundDim,
     setArabicFont,

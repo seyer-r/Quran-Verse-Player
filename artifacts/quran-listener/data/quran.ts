@@ -44,8 +44,6 @@ export const surahs: ReadonlyArray<Surah> = SURAHS;
 export const TOTAL_SURAHS = 114;
 export const TOTAL_AYAHS = 6236;
 
-export const reciter = "Mishary Rashid Alafasy";
-
 /**
  * Get a surah by its 1-based number. Throws if `n` is out of range so callers
  * fail loudly instead of silently rendering blank text.
@@ -74,9 +72,12 @@ export function getAyah(surahNumber: number, ayahNumber: number): Ayah {
   return surah.ayahs[ayahNumber - 1];
 }
 
-/** Build the audio URL for a given global ayah number. */
-export function audioUrlForGlobalAyah(globalNumber: number): string {
-  return `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${globalNumber}.mp3`;
+/** Build the audio URL for a given global ayah number and CDN reciter identifier. */
+export function audioUrlForGlobalAyah(
+  globalNumber: number,
+  cdnIdentifier = "ar.alafasy",
+): string {
+  return `https://cdn.islamic.network/quran/audio/128/${cdnIdentifier}/${globalNumber}.mp3`;
 }
 
 /** Convert an integer to Arabic-Indic digits (e.g. 12 → "١٢"). */

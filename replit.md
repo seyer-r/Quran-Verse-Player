@@ -78,7 +78,7 @@ The surah/ayah picker's primary CTA reads "Listen from ayah N", so it must start
 - Bottom labels use sentence case, 13–17pt, system secondary colour `#8e8e93` — no spaced all-caps (C05).
 
 ### Settings panel (gear in top-right header)
-**Opens as a bottom sheet (C06), not a right-slide sidebar.** Slides up from the bottom with rounded top corners, a drag handle, and swipe-down-to-dismiss (C07). Sections: Background, Ambient sound, Playback, Sleep timer, Verse transition. **Ambient volume uses a continuous PanResponder slider instead of 4 bar-graph buttons (C09).** Options persisted to AsyncStorage (native):
+**Opens as a bottom sheet, not a right-slide sidebar.** Slides up from the bottom with rounded top corners, a drag handle, and swipe-down-to-dismiss. Sections: Background, Ambient sound, Reciter, Playback, Sleep timer, Verse transition. **Ambient volume uses 4 bar-graph buttons (tap to set 25/50/75/100%).** Options persisted to AsyncStorage (native):
 
 | id         | label         | duration | through-black | description                                    |
 |------------|---------------|----------|---------------|------------------------------------------------|
