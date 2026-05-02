@@ -124,11 +124,19 @@ export interface Settings {
    * the values in PLAYBACK_SPEEDS (validated on load; defaults to 1×).
    */
   playbackSpeed: PlaybackSpeed;
+  /**
+   * When true, the current ayah is looped indefinitely rather than
+   * advancing to the next one when it finishes. Useful for memorisation.
+   * Defaults to false. Session-only — not persisted across launches so the
+   * user never accidentally starts in loop mode.
+   */
+  repeatAyah: boolean;
 }
 
 const DEFAULT_AUTOPLAY_NEXT_SURAH = true;
 const DEFAULT_BACKGROUND_DIM = true;
 const DEFAULT_PLAYBACK_SPEED: PlaybackSpeed = 1;
+const DEFAULT_REPEAT_AYAH = false;
 
 const defaultSettings: Settings = {
   transition: DEFAULT_TRANSITION,
@@ -142,6 +150,7 @@ const defaultSettings: Settings = {
   arabicFont: DEFAULT_ARABIC_FONT,
   reciterId: DEFAULT_RECITER,
   playbackSpeed: DEFAULT_PLAYBACK_SPEED,
+  repeatAyah: DEFAULT_REPEAT_AYAH,
 };
 
 const isValidTransition = (v: unknown): v is TransitionMode =>
@@ -219,6 +228,9 @@ export function useSettings() {
             playbackSpeed: isValidSpeed(parsed.playbackSpeed)
               ? parsed.playbackSpeed
               : DEFAULT_PLAYBACK_SPEED,
+            // repeatAyah is intentionally reset to false on every launch
+            // so the user never wakes up to a stuck loop.
+            repeatAyah: DEFAULT_REPEAT_AYAH,
           });
         }
       } catch {
@@ -257,6 +269,8 @@ export function useSettings() {
     setSettings((s) => ({ ...s, reciterId }));
   const setPlaybackSpeed = (playbackSpeed: PlaybackSpeed) =>
     setSettings((s) => ({ ...s, playbackSpeed }));
+  const setRepeatAyah = (repeatAyah: boolean) =>
+    setSettings((s) => ({ ...s, repeatAyah }));
 
   /**
    * Atomically update both surah and ayah. The ayah is clamped to the new
@@ -289,6 +303,7 @@ export function useSettings() {
     setAmbientVolume,
     setReciter,
     setPlaybackSpeed,
+    setRepeatAyah,
     setAutoplayNextSurah,
     setBackgroundDim,
     setArabicFont,

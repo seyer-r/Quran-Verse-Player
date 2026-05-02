@@ -78,6 +78,7 @@ export default function PlayerScreen() {
     setAmbientVolume,
     setReciter,
     setPlaybackSpeed,
+    setRepeatAyah,
     setAutoplayNextSurah,
     setBackgroundDim,
     setPosition,
@@ -158,6 +159,9 @@ export default function PlayerScreen() {
   // which is set up once per (surah, index) and otherwise wouldn't see
   // settings changes between attaches.
   const autoplayNextSurahRef = useRef(settings.autoplayNextSurah);
+  // Same pattern for repeatAyah — lets handleDidFinish read the live
+  // value without the audio effect taking it as a dependency.
+  const repeatAyahRef = useRef(settings.repeatAyah);
   // Stable ref to recordSurah so the audio effect closure can call it without
   // being re-run every time recentSurahs changes.
   const recordSurahRef = useRef(recordSurah);
@@ -184,6 +188,9 @@ export default function PlayerScreen() {
   useEffect(() => {
     autoplayNextSurahRef.current = settings.autoplayNextSurah;
   }, [settings.autoplayNextSurah]);
+  useEffect(() => {
+    repeatAyahRef.current = settings.repeatAyah;
+  }, [settings.repeatAyah]);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimer.current) {
@@ -557,6 +564,16 @@ export default function PlayerScreen() {
     // ---------------------------------------------------------------
     const handleDidFinish = () => {
       const cur = indexRef.current;
+
+      // Repeat mode: loop the current ayah indefinitely. Seek back to 0
+      // and replay without touching the index or advancing the surah.
+      if (repeatAyahRef.current && isPlayingRef.current) {
+        safeSeekZero(player);
+        applyRateToPlayer(player, playbackSpeedRef.current);
+        safePlay(player);
+        return;
+      }
+
       if (cur < ayahs.length - 1) {
         safePause(player);
         safeSeekZero(player);
@@ -1548,9 +1565,31 @@ export default function PlayerScreen() {
 
             <View style={styles.restartCol}>
               <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setRepeatAyah(!settings.repeatAyah);
+                }}
+                hitSlop={8}
+                activeOpacity={0.7}
+                accessibilityLabel={
+                  settings.repeatAyah
+                    ? "Repeat ayah: on. Tap to turn off."
+                    : "Repeat ayah: off. Tap to loop current ayah."
+                }
+                accessibilityState={{ selected: settings.repeatAyah }}
+              >
+                <SymbolIcon
+                  name="repeat.1"
+                  fallbackIonicon="repeat"
+                  size={20}
+                  color={settings.repeatAyah ? "#e8c078" : "#8e8e93"}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={restart}
                 hitSlop={8}
                 activeOpacity={0.6}
+                style={styles.restartBtn}
               >
                 <SymbolIcon
                   name="arrow.counterclockwise"
@@ -1817,6 +1856,10 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "flex-end",
     justifyContent: "center",
+    gap: 12,
+  },
+  restartBtn: {
+    marginTop: 0,
   },
   ayahRevealContainer: {
     flex: 1,
