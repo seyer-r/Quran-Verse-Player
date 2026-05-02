@@ -43,8 +43,13 @@ import {
   validateQuran,
 } from "@/data/quran";
 import { getReciter, type ReciterId } from "@/data/reciters";
-import { getTransition } from "@/lib/transitions";
-import { getArabicFont, useSettings } from "@/lib/useSettings";
+import { getTransition, CROSSFADE_DURATION_MS } from "@/lib/transitions";
+import {
+  getArabicFont,
+  useSettings,
+  PLAYBACK_SPEEDS,
+  type PlaybackSpeed,
+} from "@/lib/useSettings";
 
 // For surahs longer than this, the per-ayah segmented progress row would
 // shrink to invisible hairlines. Switch to a single overall progress bar
@@ -70,6 +75,7 @@ export default function PlayerScreen() {
     setAmbient,
     setAmbientVolume,
     setReciter,
+    setPlaybackSpeed,
     setAutoplayNextSurah,
     setBackgroundDim,
     setPosition,
@@ -296,11 +302,17 @@ export default function PlayerScreen() {
             getReciter(settings.reciterId).cdnIdentifier,
           ),
         });
+        // Apply the persisted playback rate immediately so the player
+        // is ready at the right speed the moment audio starts.
+        try {
+          p.rate = settings.playbackSpeed;
+          p.shouldCorrectPitch = true;
+        } catch {}
         bundle.players[i] = p;
       }
       return p;
     },
-    [bundle, ayahs, settings.reciterId],
+    [bundle, ayahs, settings.reciterId, settings.playbackSpeed],
   );
 
   const safePlay = (p: AudioPlayer | null | undefined) => {
@@ -663,41 +675,50 @@ export default function PlayerScreen() {
       return;
     }
 
-    if (transition.throughBlack) {
-      const half = transition.duration / 2;
-      Animated.timing(stageOpacity, {
+    if (transition.id === "crossfade") {
+      const outIdx = displayedIndex;
+      const inIdx = index;
+
+      // Guard: on first mount (or bundle rebuild) they may already match.
+      if (outIdx === inIdx) {
+        stageOpacity.setValue(1);
+        bundle.opacities.forEach((v, i) => v.setValue(i === inIdx ? 1 : 0));
+        setDisplayedIndex(inIdx);
+        return;
+      }
+
+      // Ensure only the outgoing verse is visible before we start.
+      stageOpacity.setValue(1);
+      bundle.opacities.forEach((v, i) => {
+        if (i !== outIdx) v.setValue(0);
+      });
+
+      // Leg 1 — fade the outgoing verse to 0.
+      Animated.timing(bundle.opacities[outIdx], {
         toValue: 0,
-        duration: half,
+        duration: CROSSFADE_DURATION_MS,
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
-      }).start();
-      transitionTimer.current = setTimeout(() => {
-        bundle.opacities.forEach((v, i) => v.setValue(i === index ? 1 : 0));
-        setDisplayedIndex(index);
-        Animated.timing(stageOpacity, {
+      }).start(({ finished }) => {
+        if (!finished) return; // interrupted by a faster skip — let that run
+        // Leg 2 — make all verses invisible, then fade in the incoming one.
+        // `displayedIndex` must be updated before the opacity animation so
+        // the verse view is mounted in the render tree (it renders only when
+        // `i === displayedIndex || i === index`).
+        bundle.opacities.forEach((v) => v.setValue(0));
+        setDisplayedIndex(inIdx);
+        Animated.timing(bundle.opacities[inIdx], {
           toValue: 1,
-          duration: half,
+          duration: CROSSFADE_DURATION_MS,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }).start();
-      }, half);
-    } else {
-      stageOpacity.setValue(1);
-      setDisplayedIndex(index);
-      const dur = transition.duration;
-      bundle.opacities.forEach((v, i) => {
-        const target = i === index ? 1 : 0;
-        if (dur === 0) {
-          v.setValue(target);
-        } else {
-          Animated.timing(v, {
-            toValue: target,
-            duration: dur,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }).start();
-        }
       });
+    } else {
+      // Instant — snap with no animation at all.
+      stageOpacity.setValue(1);
+      bundle.opacities.forEach((v, i) => v.setValue(i === index ? 1 : 0));
+      setDisplayedIndex(index);
     }
 
     return () => {
@@ -706,15 +727,10 @@ export default function PlayerScreen() {
         transitionTimer.current = null;
       }
     };
-  }, [
-    index,
-    surah.number,
-    bundle,
-    transition.id,
-    transition.duration,
-    transition.throughBlack,
-    stageOpacity,
-  ]);
+    // displayedIndex is intentionally omitted — it is captured from the
+    // closure at the time index changes (the value we want to fade OUT).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, surah.number, bundle, transition.id, stageOpacity]);
 
   // Persist the current ayah back to settings (debounced — only when the
   // value actually changes).
@@ -799,6 +815,18 @@ export default function PlayerScreen() {
     }
   }, [settings.ambientVolume]);
 
+  // When the user changes playback speed, apply the new rate to the
+  // currently-playing recitation player right away. New players are
+  // also initialized to this rate inside getPlayer().
+  useEffect(() => {
+    const p = currentRecitationPlayerRef.current;
+    if (!p) return;
+    try {
+      p.rate = settings.playbackSpeed;
+      p.shouldCorrectPitch = true;
+    } catch {}
+  }, [settings.playbackSpeed]);
+
   // On web, the FIRST user-driven action is the gesture that unlocks
   // audio playback. Once granted, kick off the currently-selected ambient
   // player too (it may have been deferred when the ambient effect ran on
@@ -816,12 +844,29 @@ export default function PlayerScreen() {
   // on the fresh player without requiring a manual tap.
   const handleReciterChange = useCallback(
     (id: ReciterId) => {
+      // Pause the current player IMMEDIATELY so the outgoing reciter goes
+      // silent before the new bundle is even constructed. Without this,
+      // the old AudioPlayer can bleed audio until React commits the new
+      // bundle and the teardown effect runs.
+      const current = currentRecitationPlayerRef.current;
+      if (current) safePause(current);
       reciterChangedRef.current = isPlayingRef.current;
       setAudioError(false);
       setReciter(id);
     },
     [setReciter],
   );
+
+  // Cycle through speeds on each tap — Apple Podcasts / Apple Books pattern.
+  // Wraps from 2× back to 0.5×, skipping no steps.
+  const cycleSpeed = useCallback(() => {
+    pokeControls();
+    const idx = (PLAYBACK_SPEEDS as readonly number[]).indexOf(
+      settings.playbackSpeed,
+    );
+    const next = PLAYBACK_SPEEDS[(idx + 1) % PLAYBACK_SPEEDS.length];
+    setPlaybackSpeed(next);
+  }, [settings.playbackSpeed, setPlaybackSpeed, pokeControls]);
 
   // Wrap the ambient setters so that picking a sound (or nudging the volume)
   // counts as the user gesture that unlocks web audio AND triggers playback
@@ -1461,9 +1506,19 @@ export default function PlayerScreen() {
 
             <View style={styles.restartCol}>
               <TouchableOpacity
+                onPress={cycleSpeed}
+                hitSlop={10}
+                activeOpacity={0.6}
+                accessibilityLabel={`Playback speed ${settings.playbackSpeed}×. Tap to change.`}
+                style={styles.speedBtn}
+              >
+                <Text style={styles.speedBtnLabel}>{`${settings.playbackSpeed}×`}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={restart}
                 hitSlop={8}
                 activeOpacity={0.6}
+                style={{ marginTop: 10 }}
               >
                 <SymbolIcon
                   name="arrow.counterclockwise"
@@ -1494,6 +1549,8 @@ export default function PlayerScreen() {
         onAmbientChange={handleAmbientChange}
         onAmbientVolumeChange={handleAmbientVolumeChange}
         onReciterChange={handleReciterChange}
+        playbackSpeed={settings.playbackSpeed}
+        onPlaybackSpeedChange={setPlaybackSpeed}
         onAutoplayNextSurahChange={setAutoplayNextSurah}
         onBackgroundDimChange={setBackgroundDim}
         onSleepTimerChange={setSleepTimerMinutes}
@@ -1732,5 +1789,21 @@ const styles = StyleSheet.create({
   restartCol: {
     flex: 1,
     alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  speedBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 36,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 6,
+  },
+  speedBtnLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#d4d4d4",
+    letterSpacing: -0.3,
   },
 });

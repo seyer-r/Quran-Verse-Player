@@ -31,6 +31,7 @@ import {
   type TransitionMode,
 } from "@/lib/transitions";
 import { RECITERS, type ReciterId } from "@/data/reciters";
+import { PLAYBACK_SPEEDS, type PlaybackSpeed } from "@/lib/useSettings";
 
 const AMBIENT_IONICONS: Record<AmbientId, keyof typeof Ionicons.glyphMap> = {
   off: "ban",
@@ -57,6 +58,8 @@ interface SettingsPanelProps {
   onAmbientChange: (id: AmbientId) => void;
   onAmbientVolumeChange: (vol: number) => void;
   onReciterChange: (id: ReciterId) => void;
+  playbackSpeed: PlaybackSpeed;
+  onPlaybackSpeedChange: (speed: PlaybackSpeed) => void;
   onAutoplayNextSurahChange: (next: boolean) => void;
   onBackgroundDimChange: (next: boolean) => void;
   onSleepTimerChange: (minutes: number | null) => void;
@@ -85,6 +88,8 @@ export function SettingsPanel({
   autoplayNextSurah,
   backgroundDim,
   sleepTimerMinutes,
+  playbackSpeed,
+  onPlaybackSpeedChange,
   onTransitionChange,
   onBackgroundChange,
   onAmbientChange,
@@ -492,6 +497,37 @@ export function SettingsPanel({
               </View>
             </View>
 
+            {/* === PLAYBACK SPEED === */}
+            <View style={[styles.speedPillContainer, { marginTop: 14 }]}>
+              {(PLAYBACK_SPEEDS as readonly number[]).map((s) => {
+                const selected = s === playbackSpeed;
+                const label = `${s}×`;
+                return (
+                  <TouchableOpacity
+                    key={s}
+                    onPress={() => onPlaybackSpeedChange(s as PlaybackSpeed)}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.speedPill,
+                      selected && styles.speedPillSelected,
+                    ]}
+                    accessibilityLabel={`${s}x playback speed`}
+                    accessibilityState={{ selected }}
+                  >
+                    <Text
+                      style={[
+                        styles.speedPillText,
+                        selected && styles.speedPillTextSelected,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.sleepHint}>Playback speed</Text>
+
             {/* === SLEEP TIMER === */}
             <SectionHeader title="Sleep timer" style={{ marginTop: 28 }} />
             <View style={styles.sleepPillContainer}>
@@ -528,39 +564,38 @@ export function SettingsPanel({
             {/* === VERSE TRANSITION === */}
             <SectionHeader title="Verse transition" style={{ marginTop: 28 }} />
             <View style={styles.group}>
-              {TRANSITIONS.map((t, i) => {
-                const selected = t.id === transition;
-                const isLast = i === TRANSITIONS.length - 1;
-                return (
-                  <TouchableOpacity
-                    key={t.id}
-                    onPress={() => onTransitionChange(t.id)}
-                    activeOpacity={0.6}
+              <View style={[styles.row, { paddingVertical: 12 }]}>
+                <View style={styles.rowIcon}>
+                  <SymbolIcon
+                    name="sparkles"
+                    fallbackIonicon="sparkles"
+                    size={18}
+                    color={transition === "crossfade" ? "#f5f5f5" : "#737373"}
+                  />
+                </View>
+                <View style={styles.rowTextWrap}>
+                  <Text
                     style={[
-                      styles.row,
-                      !isLast && styles.rowDivider,
-                      { alignItems: "flex-start", paddingVertical: 14 },
+                      styles.rowLabel,
+                      transition === "crossfade" && styles.rowLabelSelected,
                     ]}
                   >
-                    <View style={styles.rowTextWrap}>
-                      <Text
-                        style={[
-                          styles.rowLabel,
-                          selected && styles.rowLabelSelected,
-                        ]}
-                      >
-                        {t.label}
-                      </Text>
-                      <Text style={styles.rowSubLabel}>{t.description}</Text>
-                    </View>
-                    <View style={[styles.rowAccessory, { paddingTop: 2 }]}>
-                      {selected && (
-                        <SymbolIcon name="checkmark" fallbackIonicon="checkmark" size={17} color="#e8c078" weight="semibold" />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+                    Crossfade
+                  </Text>
+                  <Text style={styles.rowSubLabel}>
+                    Verse fades out completely, then the next fades in. Off for instant snapping.
+                  </Text>
+                </View>
+                <View style={styles.rowAccessory}>
+                  <ToggleSwitch
+                    value={transition === "crossfade"}
+                    onValueChange={(next) =>
+                      onTransitionChange(next ? "crossfade" : "instant")
+                    }
+                    accessibilityLabel="Crossfade verse transition"
+                  />
+                </View>
+              </View>
             </View>
           </ScrollView>
         </Animated.View>
@@ -872,6 +907,33 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   sleepPillTextSelected: {
+    color: "#e8c078",
+    fontWeight: "600",
+  },
+  speedPillContainer: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 14,
+    padding: 5,
+    gap: 4,
+  },
+  speedPill: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  speedPillSelected: {
+    backgroundColor: "rgba(232,192,120,0.18)",
+  },
+  speedPillText: {
+    fontSize: 14,
+    color: "#737373",
+    fontWeight: "400",
+    letterSpacing: -0.3,
+  },
+  speedPillTextSelected: {
     color: "#e8c078",
     fontWeight: "600",
   },

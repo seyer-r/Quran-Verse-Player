@@ -152,12 +152,33 @@ Sources:
 ### Background dim toggle
 `settings.backgroundDim` (default `true`, persisted in AsyncStorage v3 payload, missing field coerced to `true` for backwards compatibility). When `true`, the player renders the standard 4-stop dark scrim over the photo background. When `false`, the scrim becomes near-transparent except for a faint bottom vignette so the footer controls and reciter label stay legible against bright skies. Toggle lives in the **Background** section of the settings panel (sun icon).
 
+### Playback speed control
+Six speeds: 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2× (default 1×). Persisted via `settings.playbackSpeed` (type `PlaybackSpeed`, stored in AsyncStorage v5 key, backward-compat defaults to 1 if missing or invalid).
+
+- **Footer speed pill**: a small `1×` / `1.25×` etc. badge in the bottom-right corner of the transport row. Tap to cycle to the next speed (wraps 2× → 0.5×), matching the Apple Podcasts and Apple Books pattern.
+- **Settings panel speed row**: six pills under the Playback section, identical visual language to the Sleep timer pills. Both surfaces show the same selection.
+- **Implementation**: `player.rate` + `player.shouldCorrectPitch = true` are set in `getPlayer()` on construction, and in a dedicated `useEffect([settings.playbackSpeed])` that applies the rate to `currentRecitationPlayerRef.current` whenever the setting changes mid-session.
+- `PLAYBACK_SPEEDS` and `PlaybackSpeed` are exported from `lib/useSettings.ts`; `PLAYBACK_SPEEDS.indexOf()` is used in `cycleSpeed` to advance the selection.
+
+### Audio — instant reciter switching (zero bleed)
+`handleReciterChange` now calls `safePause(currentRecitationPlayerRef.current)` **before** calling `setReciter`. This silences the outgoing player immediately, before React even schedules the state update that triggers the bundle rebuild. Previously, the old player would continue playing until the bundle teardown `useEffect` ran (which could be several frames later).
+
 ### Audio — reciter switching architecture
 The `bundle` useMemo is keyed on **both** `surah.number` and `settings.reciterId`. Changing either tears down all existing `AudioPlayer` instances and builds a fresh set, ensuring the new reciter's CDN URLs are used from the very next play.
 
 - `getPlayer` useCallback has `[bundle, ayahs, settings.reciterId]` as deps — stale closure is impossible.
 - `handleReciterChange` (not `setReciter` directly) is passed to both `ReciterSheet` and `SettingsPanel`. It captures `isPlayingRef.current` into `reciterChangedRef` so the audio effect can auto-resume on the new player if audio was playing at switch time.
 - `currentRecitationPlayerRef` always points to the live player. The sleep-timer reads it (instead of `bundle.players[idx]`) so it can fade/pause the correct player even after a bundle rebuild.
+
+### Verse transition — sequential crossfade (binary toggle)
+The multi-speed transition picker (Instant / Quick / Smooth / Slow / Through black) has been replaced with a single binary toggle in Settings → Verse transition:
+
+- **Crossfade ON** (default): the current verse fades **out** completely over 700 ms, then the next verse fades **in** over 700 ms. The two verses are never simultaneously visible — there is no overlap, no merge, no blending moment.
+- **Crossfade OFF**: verses snap instantly with no animation.
+
+`lib/transitions.ts` now exports only `TransitionMode = "instant" | "crossfade"` and `CROSSFADE_DURATION_MS = 700`. The old `duration`, `throughBlack`, and multi-option `TRANSITIONS` array are gone. The SettingsPanel shows a `ToggleSwitch` row (same component used for "Dim background" and "Auto-play next surah") instead of a list picker. `settings.transition` is still the persisted field; any old value not in `["instant","crossfade"]` falls back to `"crossfade"`.
+
+The animation in `app/index.tsx` uses `.start(({ finished }) => { ... })` callbacks — the fade-in leg only begins once the fade-out **completes**, and if an animation is interrupted (fast skip) the callback is skipped via the `finished` guard.
 
 ### Audio — error handling and web fixes
 - **Load timeout**: if a player hasn't emitted `isLoaded: true` after 12 s (e.g. CDN error, network failure), `isLoading` is cleared and `audioError` is set. The play button shows a red ⚠️ instead of an infinite spinner. Tapping play clears the error and retries.

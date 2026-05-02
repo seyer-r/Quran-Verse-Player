@@ -1,0 +1,48 @@
+Here's the cleaned-up prompt:
+
+"Implement the following three features and fixes, all consistent with Apple's Human Interface Guidelines. The app's identity is clean, minimal, and beautiful — every addition must serve that.
+Rules to follow throughout:
+
+Commit after every individual change so each stage can be reverted independently
+The app must remain fully functional at every stage
+Test on both iOS and Android after each change
+
+
+1. Playback Speed Control
+Add the ability for the user to speed up or slow down the reciter's audio playback. This must:
+
+Follow Apple's native design patterns for playback speed (reference Apple Podcasts and Apple Books for how they handle this)
+Feel native, minimal, and clean — not cluttered or out of place
+Support standard speed options (e.g. 0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x) at minimum
+Default to 1x
+Persist the user's chosen speed across sessions
+
+
+2. Instant Reciter Switching
+When the user changes reciter, the switch must be immediate and clean. Currently the previous reciter's audio can still be heard briefly after switching — this must be fixed. Specifically:
+
+The previous reciter's audio must be stopped completely and instantly before the new one begins
+There must be zero audio bleed from the old reciter
+The transition should feel seamless and professional
+
+
+3. Ayah Text Crossfade Transition
+Change the default Ayah text transition to a slow, clean crossfade. The behaviour must be:
+
+The current Ayah text fades out completely first
+Only once it has fully faded out, the next Ayah text begins to fade in
+The two texts must never be visible at the same time — no merging, no overlap
+The timing must feel smooth and deliberate, not rushed
+The user can toggle this feature off in settings, which makes transitions instant instead
+There is no option to pick a custom duration — it is either crossfade on or instant off
+
+
+For each feature:
+
+Reference Apple design standards where relevant
+Implement the change
+Verify the app is fully functional
+Commit with a clear descriptive message
+Then move to the next feature
+
+Do not move on until the current change is committed and verified.

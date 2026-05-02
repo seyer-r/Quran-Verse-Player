@@ -23,6 +23,10 @@ import {
   TRANSITIONS,
 } from "./transitions";
 
+/** All supported playback rates, in ascending order. */
+export const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
+
 // v5: UthmanicHafs v18 has been patched in-place (scripts/patch-font.py) to
 // fix the root cause of the U+25CC dotted-circle rendering bug. The patch
 // applies three coordinated font-table edits:
@@ -115,10 +119,16 @@ export interface Settings {
   arabicFont: ArabicFontId;
   /** Which reciter to stream audio from. */
   reciterId: ReciterId;
+  /**
+   * Playback rate applied to every recitation AudioPlayer. Must be one of
+   * the values in PLAYBACK_SPEEDS (validated on load; defaults to 1×).
+   */
+  playbackSpeed: PlaybackSpeed;
 }
 
 const DEFAULT_AUTOPLAY_NEXT_SURAH = true;
 const DEFAULT_BACKGROUND_DIM = true;
+const DEFAULT_PLAYBACK_SPEED: PlaybackSpeed = 1;
 
 const defaultSettings: Settings = {
   transition: DEFAULT_TRANSITION,
@@ -131,10 +141,13 @@ const defaultSettings: Settings = {
   backgroundDim: DEFAULT_BACKGROUND_DIM,
   arabicFont: DEFAULT_ARABIC_FONT,
   reciterId: DEFAULT_RECITER,
+  playbackSpeed: DEFAULT_PLAYBACK_SPEED,
 };
 
 const isValidTransition = (v: unknown): v is TransitionMode =>
   typeof v === "string" && TRANSITIONS.some((t) => t.id === v);
+const isValidSpeed = (v: unknown): v is PlaybackSpeed =>
+  (PLAYBACK_SPEEDS as readonly number[]).includes(v as number);
 const isValidBackground = (v: unknown): v is BackgroundId =>
   typeof v === "string" && BACKGROUND_OPTIONS.some((b) => b.id === v);
 const isValidAmbient = (v: unknown): v is AmbientId =>
@@ -203,6 +216,9 @@ export function useSettings() {
             reciterId: isValidReciter(parsed.reciterId)
               ? parsed.reciterId
               : DEFAULT_RECITER,
+            playbackSpeed: isValidSpeed(parsed.playbackSpeed)
+              ? parsed.playbackSpeed
+              : DEFAULT_PLAYBACK_SPEED,
           });
         }
       } catch {
@@ -239,6 +255,8 @@ export function useSettings() {
     setSettings((s) => ({ ...s, arabicFont }));
   const setReciter = (reciterId: ReciterId) =>
     setSettings((s) => ({ ...s, reciterId }));
+  const setPlaybackSpeed = (playbackSpeed: PlaybackSpeed) =>
+    setSettings((s) => ({ ...s, playbackSpeed }));
 
   /**
    * Atomically update both surah and ayah. The ayah is clamped to the new
@@ -270,6 +288,7 @@ export function useSettings() {
     setAmbient,
     setAmbientVolume,
     setReciter,
+    setPlaybackSpeed,
     setAutoplayNextSurah,
     setBackgroundDim,
     setArabicFont,
