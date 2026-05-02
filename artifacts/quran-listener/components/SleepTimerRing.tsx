@@ -70,12 +70,10 @@ export function SleepTimerRing({ remainingMs, durationMin, onCancel }: Props) {
 
 const styles = StyleSheet.create({
   wrap: {
-    alignSelf: "center",
     width: SIZE,
     height: SIZE,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 10,
   },
   ring: {
     position: "absolute",

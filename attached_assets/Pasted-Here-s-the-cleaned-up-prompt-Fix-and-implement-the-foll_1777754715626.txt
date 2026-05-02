@@ -1,0 +1,35 @@
+Here's the cleaned-up prompt:
+
+"Fix and implement the following UI features. Before considering anything done, you must screenshot and visually verify every single change yourself. If something looks off, keep iterating until it is perfect. If you are unsure about anything, search online and study Apple's design before proceeding. Do not tell me something is done unless you are 100% certain it is correct.
+Rules throughout:
+
+Commit after every individual change
+App must remain fully functional at every stage
+Test on both iOS and Android after each change
+Screenshot every feature after implementation and evaluate it honestly — if it does not look right, fix it before moving on
+
+
+1. Sleep Timer Circle — Alignment Fix
+The sleep timer circle does not look centred or aligned correctly compared to the play button. It looks visually off. Fix this so that:
+
+The circle is perfectly centred and visually balanced within its container
+It aligns naturally alongside the play button with consistent spacing
+Screenshot the result and compare it directly against the play button to verify alignment before committing
+Keep iterating and screenshotting until it looks exactly right
+
+
+2. Large Collapsing Title in Choose Surah Modal
+Implement the Apple-style large title to small title transition in the Choose Surah modal. This is the effect seen across native Apple apps — Mail, Contacts, Music, Podcasts — where:
+
+The Surah title starts large at the top of the modal when the user first opens it
+As the user scrolls down the list, the large title smoothly collapses and transitions into a smaller compact title in the navigation bar area
+Scrolling back up expands it back to the large title
+The animation must feel identical to Apple's native implementation — smooth, springy, and natural
+
+Before implementing:
+
+Search online for "iOS large title collapse animation", "UINavigationController large title React Native", and any other relevant terms to understand exactly how it works
+Study Apple's HIG on large titles and navigation bars thoroughly
+Find reference implementations and use them to guide your build
+
+The final result must look and behave identically to Apple's native large title. Screenshot it at every stage — large state, mid-scroll transition, and collapsed state — and verify each one looks correct before committing. If any state looks off, keep fixing and screenshotting until it is perfect.

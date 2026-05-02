@@ -1549,13 +1549,6 @@ export default function PlayerScreen() {
           ]}
           pointerEvents={chromeVisible ? "auto" : "none"}
         >
-          {sleepExpiresAt != null && sleepDurationMin != null && (
-            <SleepTimerRing
-              remainingMs={sleepRemainingMs}
-              durationMin={sleepDurationMin}
-              onCancel={() => setSleepTimerMinutes(null)}
-            />
-          )}
           {ayahs.length <= SEGMENTED_PROGRESS_MAX ? (
             <View style={styles.progressRow}>
               {ayahs.map((a, i) => {
@@ -1705,18 +1698,26 @@ export default function PlayerScreen() {
             </View>
 
             <View style={styles.restartCol}>
-              <TouchableOpacity
-                onPress={restart}
-                hitSlop={8}
-                activeOpacity={0.6}
-              >
-                <SymbolIcon
-                  name="arrow.counterclockwise"
-                  fallbackIonicon="refresh"
-                  size={20}
-                  color="#8e8e93"
+              {sleepExpiresAt != null && sleepDurationMin != null ? (
+                <SleepTimerRing
+                  remainingMs={sleepRemainingMs}
+                  durationMin={sleepDurationMin}
+                  onCancel={() => setSleepTimerMinutes(null)}
                 />
-              </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={restart}
+                  hitSlop={8}
+                  activeOpacity={0.6}
+                >
+                  <SymbolIcon
+                    name="arrow.counterclockwise"
+                    fallbackIonicon="refresh"
+                    size={20}
+                    color="#8e8e93"
+                  />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </Animated.View>

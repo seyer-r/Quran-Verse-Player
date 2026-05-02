@@ -1,0 +1,71 @@
+Implement a feature that allows users to upload their own custom background image or video behind the Arabic text. The feature must feel completely native, premium, and Apple-like — clean, minimal, and beautiful.
+Before writing a single line of code:
+
+Study Apple's HIG on sheets, modals, media pickers, and previews
+Reference how Apple's native apps handle media selection and customisation (Wallpaper settings in iOS, Photos app, iMessage backgrounds)
+Search online for best practices on custom background implementation in React Native
+
+
+How it should work:
+1. Entry Point
+
+There must be a clear, natural place in the UI where the user can access this feature — choose somewhere that feels intuitive and Apple-like, not forced or hidden
+
+2. Upload Sheet
+When the user taps to change their background, a sheet opens from the bottom that:
+
+Allows the user to pick either an image or a video from their device's photo library
+Uses the native iOS/Android media picker so it feels completely native
+Handles both images and videos gracefully — including portrait, landscape, and square formats
+
+3. Preview Screen
+Before applying the background, the user must see a full preview that:
+
+Shows a realistic iPhone screen mockup so the user can see exactly how their background will look on the actual device
+The Arabic text must appear inside this mockup over the background, just as it would in the real app
+The mockup must be to scale and look premium — not a cheap outline or placeholder
+Search online for how Apple and other premium apps handle in-app device mockup previews before implementing this
+If a video is selected, it must play looping in the preview so the user can see the motion
+The mockup must update live as the user zooms, pans, and adjusts their image
+
+4. Image and Video Adjustment
+Within the preview, the user must be able to adjust how their image or video fits. Specifically:
+
+The user can pinch to zoom in and out on their image or video
+The user can drag to reposition and pan the image or video within the frame
+The user can adjust the proportions and crop to get it fitting exactly how they want
+All changes must update the preview in real time as the user adjusts
+If the user leaves and comes back, their last adjustment must be remembered
+
+5. Confirmation
+
+A clear, Apple-style done or apply button that confirms the selection and applies it as the background
+A clear cancel or discard option that exits without changing anything
+Once applied, the background must appear correctly behind the Arabic text with no layout issues
+
+6. Edge Cases to handle:
+
+Very bright images or videos that make the Arabic text unreadable — apply an automatic subtle dim or overlay to ensure text is always legible
+Very dark images that clash with dark mode text — handle this gracefully
+Videos that are very large in file size — handle loading and performance sensibly
+Portrait vs landscape orientation — the background must always fill the screen correctly regardless of aspect ratio
+If the user zooms out too far and the image no longer fills the screen, handle this gracefully — either snap back or show a subtle indicator
+If the user makes extreme adjustments that would result in a poor looking background, do not block them but ensure the Arabic text remains legible at all times
+If the user has never set a custom background, the default background must show cleanly with no broken states
+
+
+Design requirements:
+
+Every screen in this flow — the entry point, the sheet, the preview, the adjustment, and the confirmation — must look and feel like it was built by Apple
+Nothing should look out of place, cramped, or misaligned on any iPhone or Android device
+Screenshot every screen of the flow after implementation and evaluate honestly — if anything looks off, fix it before moving on
+Keep iterating and screenshotting until every screen is perfect
+
+
+Rules:
+
+Commit after the feature is fully and correctly implemented
+App must remain fully functional throughout
+Test on both iOS and Android
+Do not confirm it is done until every screen has been screenshotted and verified as looking correct and Apple-like
+If you are unsure about anything, search online before proceeding"
