@@ -1,246 +1,60 @@
-# Workspace
+# Overview
 
-## Overview
+This project is a pnpm workspace monorepo using TypeScript, focused on developing a Quran listening mobile application called "quran-listener". The application allows users to listen to all 114 surahs of the Quran, ayah-by-ayah, with full Arabic (Uthmani script) and English (Sahih International) translation. Audio is streamed from the `cdn.islamic.network` Quran CDN.
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+The project aims to provide a high-quality, feature-rich mobile experience for Quran recitation, including customizable settings for reciters, backgrounds, ambient sounds, and playback controls. It leverages modern mobile development technologies to ensure a smooth and accessible user experience across iOS and Android platforms.
 
-## Stack
+# User Preferences
+
+I prefer iterative development and expect the agent to communicate clearly about major changes before implementing them. When making changes, I appreciate detailed explanations, especially concerning architectural decisions or significant code modifications. I prefer a coding style that is functional where appropriate. I also want the agent to use simple language when explaining complex topics.
+
+# System Architecture
+
+The project is structured as a pnpm monorepo with TypeScript. It uses Node.js 24 and pnpm as the package manager. The API layer, if developed, would use Express 5 with PostgreSQL and Drizzle ORM, and Zod for validation. API codegen is handled by Orval from an OpenAPI spec, and esbuild is used for CJS bundling.
+
+The `quran-listener` mobile application is built with Expo / React Native.
+
+**UI/UX Decisions:**
+- **Color Scheme:** Pure black (`#000`) background by default, with optional photo backgrounds and a scrim.
+- **Typography:**
+    - Arabic verses use the KFGQPC font, centered, with a subtle warm text-shadow. Verse numbers are rendered in Arabic-Indic digits within the font's ornament glyphs.
+    - English translations use a smaller, dimmer `text-neutral-400` font.
+    - Surah names in the header and picker use calligraphic glyphs from the KFGQPC Surah Names font v1.
+    - Custom Arabic fonts (`UthmanicHafs` and `AmiriQuran`) are bundled and user-selectable, with `UthmanicHafs` as default.
+- **Layout:** Verses are stacked in the same place and opacity-toggled for smooth transitions. Long ayahs feature adaptive font sizing, per-verse `ScrollView` with `flexGrow:1, justifyContent:'center'`, and tightened line-height.
+- **Player Controls:** Apple Human Interface Guidelines (HIG) compliant with prev/play-pause/next buttons, progress bars (segmented for short surahs, single for long), and haptic feedback. Play button shows an `ActivityIndicator` when buffering. Restart icon replaces play button upon surah completion.
+- **Settings Panel:** Implemented as a bottom sheet with rounded top corners, a drag handle, and swipe-down-to-dismiss.
+- **Marquee Text:** Reciter names in the footer use `MarqueeText` component for smooth, looping scroll when overflowing.
+- **Sleep Timer:** Displays as a circular ring using `react-native-svg` for a visual countdown.
+- **Scroll Edge Fade:** Long ayahs that overflow the screen have `LinearGradient` overlays at top and bottom to indicate scrollability and soften clipping.
+
+**Technical Implementations:**
+- **Audio Playback:** Uses `expo-audio` (pinned to `1.1.0` due to upstream bug) with `interruptionMode: 'mixWithOthers'` for simultaneous ambient and recitation audio.
+- **Audio Error Handling:** Implements load timeouts (12s) and displays a `⚠️` for CDN/network failures.
+- **Persistence:** Settings and last playback position are persisted using `AsyncStorage`. All loaded values are validated and clamped.
+- **Data Layer:** `data/quran.json` contains the entire Quran corpus (~2.5 MB) generated from external APIs. `data/quran.ts` provides typed accessors and validation.
+- **Surah/Ayah Picker:** Full-screen modal with search, filtering, and inline ayah selection.
+- **Verse Transitions:** Configurable to "Instant" or "Crossfade" (700ms fade out, then 700ms fade in).
+- **Playback Speed Control:** Six selectable speeds (0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x) with pitch correction enabled.
+- **Reciter Switching:** Designed for instant switching with zero audio bleed, rebuilding `AudioPlayer` instances only when necessary.
+- **Skip Throttle:** Implemented a `SKIP_COOLDOWN_MS` (220ms) lock to prevent race conditions during rapid taps on skip buttons.
+- **Audio Diagnostics:** A development-only diagnostic system (`runAudioDiagnostics`) is available to check audio player states.
+- **Font Patching:** The `UthmanicHafs` font was patched to fix a `U+25CC` dotted-circle bug, with a reproducible script (`scripts/patch-font.py`) and a `render-check.mjs` utility for verification.
+
+# External Dependencies
 
 - **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
 - **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
-
-## Key Commands
-
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/api-server run dev` — run API server locally
-
-See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
-
-## Artifacts
-
-- **quran-listener** (`/`) — **Expo / React Native** mobile app. Plays **all 114 surahs** of the Quran ayah-by-ayah (Mishary Rashid Alafasy) with full Arabic (Uthmani script) and English (Sahih International) translation. Audio streamed from the `cdn.islamic.network` Quran CDN, addressed by global ayah number (1..6236). No backend; the entire corpus lives in `data/quran.json` (~2.5 MB, generated by `scripts/fetch-quran.mjs` from alquran.cloud). A surah/ayah picker is reachable from the header. Settings + last position persist via AsyncStorage.
-
-  **Previously a React + Vite PWA — was migrated to Expo on 2026-04-27 to enable native iOS/Android distribution. The free tier only allows one artifact at a time, so the web version was removed during the swap. The full feature spec below was preserved so behavior matches.**
-
-## quran-listener — Feature Spec
-
-### Visual / Audio
-- **Reciters** (5, all verified HTTP 200 on the CDN):
-  - Mishary Rashid Alafasy (`ar.alafasy`) — default
-  - Ali Al-Hudhaify (`ar.hudhaify`)
-  - Maher Al-Muaiqly (`ar.mahermuaiqly`)
-  - Abu Bakr Al-Shatri (`ar.shaatree`)
-  - Mahmoud Khalil Al-Hussary (`ar.husary`)
-  - ⚠️ DO NOT use `ar.abdurrahmansudais` / `ar.saadalghamdi` — both return HTTP 403 from the CDN for all ayahs.
-- **Audio source**: `https://cdn.islamic.network/quran/audio/128/{cdnIdentifier}/{globalNumber}.mp3` where `globalNumber` is the 1..6236 ayah index across the whole Quran (built via `audioUrlForGlobalAyah` in `data/quran.ts`).
-- **Background**: pure black (`#000`) by default, optional photo backgrounds with scrim.
-- **Surah header (left)**: small uppercase eyebrow `SURAH N`, then `<latin name> — <meaning>` with a chevron-down icon. Tapping opens the surah/ayah picker.
-- **Surah header (right)**: Arabic surah name in the Quran font, with a settings (gear) icon to its left.
-- **Ayah counter**: `AYAH N OF M` in tracked uppercase, centered above the verse. Tapping opens the picker at the current position.
-- **Arabic verse**: large centered RTL text in the KFGQPC font, with subtle warm text-shadow `0 0 40px rgba(255,220,160,0.15)`. Each verse ends with a non-breaking space + the verse number rendered in Arabic-Indic digits — the KFGQPC font draws each digit inside its own ornament glyph, which IS the proper end-of-ayah marker (do NOT also prepend U+06DD; that draws an additional empty rosette next to the digit).
-- **Translation**: Sahih International English under the Arabic, smaller and dimmer (`text-neutral-400`), max width ~2xl, top margin ~3rem.
-
-### Layout — no shift between ayahs
-Verses are stacked in the same place, opacity-toggled rather than mounted/unmounted. To stay efficient on long surahs (Al-Baqarah has 286 ayahs), only the current and previously-displayed ayah views are actually mounted; the others are skipped in render.
-
-### Long-ayah handling
-The longest ayah in the Quran (Al-Baqarah 282, ~1500 Arabic chars) cannot fit on any phone screen. Two-part fix in `app/index.tsx`:
-1. **Adaptive font size** (`computeArabicFontSize`) — base font is scaled down by tier when the Arabic char length crosses 120 / 250 / 500 / 1000 chars, with a 22 px floor.
-2. **Per-verse `ScrollView`** wraps each rendered ayah. `contentContainerStyle` uses `flexGrow:1, justifyContent:'center'` so short ayahs stay centered exactly as before, and `scrollEnabled` is only true when the combined char length > 400 — short ayahs keep the existing tap-to-toggle gesture on the verse area.
-Line-height is also tightened from 1.9× to 1.7× / 1.55× for medium / long ayahs so vertical stacking doesn't push content off-screen before the font shrink can help.
-
-### Audio interruption (recitation + ambient must coexist)
-expo-audio's default `interruptionMode` requests exclusive audio focus per player, so creating the ambient (rain / ocean / etc) player kicks the Quran recitation off mid-verse. Fix: `setAudioModeAsync({ ..., interruptionMode: 'mixWithOthers' })` is called at **module scope in `app/_layout.tsx`** — NOT inside a `useEffect` in the player screen. If you put it in the screen, it races with the player constructors that fire on the same render and on iOS the first player to load grabs an exclusive audio session before the mode change takes effect. Both players now share the audio session and play simultaneously.
-
-### expo-audio version pin (1.1.0)
-Pinned to **`expo-audio: "1.1.0"`** in `artifacts/quran-listener/package.json`. Version `1.1.1` ships a JS wrapper that passes 4 arguments to the native `AudioPlayer` constructor when the native side only accepts 3 — the player crashes immediately on construction. Do NOT bump back to `^1.1.x` without first verifying that the constructor arg-count mismatch is fixed upstream. Expo's "expected version" warning at startup is safe to ignore for this package.
-
-### Web autoplay policy (browser-only)
-Browsers block `HTMLAudioElement.play()` with `NotAllowedError` unless an active user-gesture grant exists. The ambient player normally auto-starts from saved settings on mount, which fails on web. Fix in `app/index.tsx`: a `userGestureGrantedRef` (initialised to `true` on native, `false` on web) gates the ambient `safePlay()` call. Every user-driven control (`togglePlay`, `goPrev`, `goNext`, `restart`, `handlePickPosition`) calls `grantUserGestureAndStartAmbient()` — the first such call flips the flag and kicks off the deferred ambient player. The ambient effect itself only auto-plays the freshly-created player when the flag is already true.
-
-### Ambient effect — split source vs volume
-The ambient effect is split into two `useEffect`s in `app/index.tsx`: one keyed on `settings.ambient` rebuilds/tears down the player, the other keyed on `settings.ambientVolume` just sets `player.volume` on the existing player. This prevents the volume slider from tearing down and recreating the player mid-drag.
-
-### Picker auto-play
-The surah/ayah picker's primary CTA reads "Listen from ayah N", so it must start playback on confirm — previously it required an extra tap on the play button. `handlePickPosition` now plays immediately for same-surah picks (the bundle is already mounted) and uses a `shouldAutoPlayRef` flag for cross-surah picks (the audio listener effect re-attaches after the bundle rebuild and starts playback once the new player exists).
-
-### Player controls (bottom) — Apple HIG compliant
-- For surahs with ≤30 ayahs: thin horizontal segments — one per ayah — that fill left-to-right as audio plays. **Segments are tappable to jump directly to that ayah (C13).** Past ayahs show 100%, current shows live progress, future show 0%.
-- For longer surahs: a single overall progress bar across the whole surah (segments would be invisible at 286 wide).
-- Center: prev / play-pause / next. Play button is a 64×64 white circle. **Shows ActivityIndicator when buffering (C10)**. When the surah finishes, the play button becomes a "restart" icon.
-- **Disabled skip buttons use opacity:0.3 instead of colour change (C11).**
-- **Bottom-right: `arrow.counterclockwise` SF Symbol icon instead of "RESTART" text (C12).**
-- **Haptic feedback (expo-haptics) on play/pause (medium) and skip prev/next (light) (C14).**
-- Bottom labels use sentence case, 13–17pt, system secondary colour `#8e8e93` — no spaced all-caps (C05).
-
-### Settings panel (gear in top-right header)
-**Opens as a bottom sheet, not a right-slide sidebar.** Slides up from the bottom with rounded top corners, a drag handle, and swipe-down-to-dismiss. Sections: Background, Ambient sound, Reciter, Playback, Sleep timer, Verse transition. **Ambient volume uses 4 bar-graph buttons (tap to set 25/50/75/100%).** Options persisted to AsyncStorage (native):
-
-| id         | label         | duration | through-black | description                                    |
-|------------|---------------|----------|---------------|------------------------------------------------|
-| instant    | Instant       | 0        | false         | No animation — verses snap immediately         |
-| quick      | Quick         | 350 ms   | false         | Brief crossfade                                |
-| smooth     | Smooth        | 1100 ms  | false         | Default — gentle crossfade                     |
-| slow       | Slow          | 2000 ms  | false         | Deliberate crossfade                           |
-| blackout   | Through black | 1600 ms  | true          | Fade fully to black, then fade in next verse   |
-
-- For crossfade modes, both the outgoing and incoming verses are rendered simultaneously and just opacity-toggled — they overlap mid-transition. `transitionDuration` = mode duration.
-- For "Through black", the whole stage's opacity goes to 0 over `duration/2`, then `displayedIndex` swaps to the new verse, then stage opacity goes back to 1 over the remaining `duration/2`. Per-verse transition is 0 in this mode.
-- Default selection: `smooth`.
-
-### Data layer (114 surahs)
-- `data/quran.json` — bundled corpus, generated from quran.com's QPC Hafs Uthmani text (`api.quran.com/api/v4/quran/verses/uthmani`) for the Arabic and alquran.cloud (`en.sahih`) for the English. 114 surahs, 6236 ayahs, ~2.5 MB. The QPC text uses the Madinah-mushaf glyph repertoire including silent-letter marks like U+06DF (small high rounded zero) — see "Fonts" below for why this matters.
-- `data/quran.ts` — typed accessors and validation:
-  - Types: `Surah`, `Ayah`, `RevelationType`.
-  - Per-ayah: `number` (1..N within surah), `globalNumber` (1..6236, used for audio), `arabic`, `translation`.
-  - Per-surah: `number`, `nameArabic`, `nameLatin`, `meaning`, `revelationType`, `ayahCount`, `ayahs[]`.
-  - Helpers: `getSurah(n)`, `getAyah(s, a)` — both throw on out-of-range, `audioUrlForGlobalAyah(n)`, `ayahMarker(n)` (returns NBSP + Arabic-Indic digits — NO U+06DD), `validateQuran()` (returns `{ ok, errors[] }`).
-- `scripts/fetch-quran.mjs` — regenerate `quran.json` from the upstream API. Validates alignment before writing.
-- `scripts/validate-quran.mjs` — stand-alone CLI validator (`node scripts/validate-quran.mjs`). Exits 1 on any structural error.
-- The runtime player calls `validateQuran()` once on mount in `__DEV__` so corruption never reaches the UI silently.
-
-### Surah / Ayah picker
-- `components/SurahPicker.tsx` — full-screen modal sheet, opened from the header or ayah counter.
-- Search bar filters by surah number, latin name (with or without dashes), or English meaning.
-- Each row shows the number badge, latin name, meaning, ayah count, revelation type, and Arabic name.
-- Tapping a row expands an inline grid of every ayah in that surah (using the real `ayahCount`). Tap an ayah to jump there; tap "From start" to jump to ayah 1.
-- The current surah is highlighted with a gold border and dot.
-
-### Persistence
-`lib/useSettings.ts` (storage key `quran-listener-settings-v5`) persists transition mode, background, ambient + volume, and **the current surah and ayah** so the app resumes at the same position next launch. All values are validated/clamped on load — out-of-range values fall back to defaults. The key was bumped to `v5` when the default Arabic font was restored to `uthmani` after the GPOS patch fixed the dotted-circle bug (see "Fonts" below).
-
-### Fonts
-Two Arabic fonts are bundled locally and **both** are registered in `app/_layout.tsx` via `useFonts`. The tree is gated on `fontsLoaded` before any verse renders — this is what prevents the dotted-circle placeholder you'd otherwise see when React Native paints with a missing-glyph fallback while the font is still streaming in.
-
-The user picks which one to read in via **Settings → Arabic font**. The choice is stored in `settings.arabicFont` (**default `"uthmani"`** since storage key v5) and applied by overriding `fontFamily` inline on the verse `<Text>` (`arabicFontFamily` in `app/index.tsx`). The picker also previews each font live in its own typeface so you can see the effect before committing.
-
-| id        | family          | file (`assets/fonts/`)  | use                                                                                                                  |
-|-----------|-----------------|-------------------------|----------------------------------------------------------------------------------------------------------------------|
-| `uthmani` | `UthmanicHafs`  | `UthmanicHafsV18.ttf` (~240 KB) | **Default (recommended).** KFGQPC HAFS Uthmanic Script v0.18, patched in-place (see below). Renders ayah-end markers as Arabic-Indic digits inside the rosette ornament glyph — the traditional Madinah mushaf look memorisers expect. The U+25CC dotted-circle bug has been resolved; render-check confirms 0 genuine orphan insertions across all 6236 ayahs. License is non-commercial. |
-| `amiri`   | `AmiriQuran`    | `AmiriQuran.ttf` (~133 KB)   | Modern Quranic typeface, full GSUB + GPOS mark / mkmk coverage for every Quranic mark in the QPC corpus. Alternative for users who prefer its style. |
-
-`UthmanicHafs` is also used unconditionally for the surah-name display in the header, regardless of the verse font choice — surah names don't contain the affected Quranic marks.
-
-#### Font patch — how the U+25CC dotted-circle bug was fixed (2026-05-01)
-The first user-visible symptom was a "white dot inside a dotted circle" appearing in 2,240+ ayahs (e.g. `أُو۟لَـٰٓئِكَ` in Surah 2:5). Root cause: three independent defects in `uni06DF` (U+06DF, ARABIC SMALL HIGH ROUNDED ZERO) in UthmanicHafs v18:
-
-1. **GDEF GlyphClassDef**: `uni06DF` was classified as **BASE (class 1)** — HarfBuzz never treats it as a combining mark regardless of any GPOS rules.
-2. **GPOS MarkToBase**: `uni06DF` was absent from all 9 relevant MarkCoverage tables — even with a correct GDEF class, no attachment anchors existed.
-3. **Glyph outline**: `uni06DF` was a composite reference to `uni0600` at 1:1 scale with advance=1442, drawing at 61% UPM height — far too large for a small superscript mark even if GPOS had positioned it.
-
-Fix applied by `scripts/patch-font.py` (idempotent, reproducible):
-1. `GDEF.GlyphClassDef['uni06DF'] = 3` (MARK)
-2. `uni06DF` inserted into MarkCoverage of GPOS Lookups 6–15 (MarkToBase) at class=0 with anchors cloned from `uni06E0` at (275,−25) / (0,0)
-3. Glyph decomposed via fontTools pens, scaled to 20% and repositioned to superscript zone (center → (300, 750); new bbox ≈ (174, 624, 425, 875)); advance set to 0
-
-`scripts/render-check.mjs` — Node HTTP server on port 5000 that loads the original, patched, and AmiriQuran fonts in a real browser via `@font-face`, renders every suspect Quranic mark codepoint isolated (waw + mark) and one full example ayah per mark side-by-side. Verdict for v5: **Patched bad=2 ≤ Amiri baseline=2** (the 2 remaining flagged marks are false positives of the pixel-surplus detector — they also appear in the perfect AmiriQuran reference). Run via `node artifacts/quran-listener/scripts/render-check.mjs`, then open `localhost:5000`.
-
-Sources:
-- UthmanicHafs **v0.18** — `https://quran.com/fonts/quran/hafs/uthmanic_hafs/UthmanicHafs1Ver18.ttf` (latest available as of 2026-04-30)
-- AmiriQuran — `https://github.com/aliftype/amiri/releases/download/1.001/Amiri-1.001.zip` → `AmiriQuran.ttf`
-
-### Background dim toggle
-`settings.backgroundDim` (default `true`, persisted in AsyncStorage v3 payload, missing field coerced to `true` for backwards compatibility). When `true`, the player renders the standard 4-stop dark scrim over the photo background. When `false`, the scrim becomes near-transparent except for a faint bottom vignette so the footer controls and reciter label stay legible against bright skies. Toggle lives in the **Background** section of the settings panel (sun icon).
-
-**Dim text visibility fix**: All secondary-label text in the header/footer (`eyebrow`, `surahMeaning`, `counter`, `reciterEyebrow`, `reciterName`) now carries `textShadow` and, when any background is active, their grey colour is lifted from `#8e8e93` to `#aeaeb2` (dim OFF) or `#b0b0b8` (dim ON) via a computed `secondaryOverride` applied inline. This ensures contrast ≥ 4.5:1 against both bright video frames and the dimmed scrim.
-
-### Reciter name — marquee scroll
-`components/MarqueeText.tsx` — drop-in replacement for `<Text numberOfLines={1}>` in the reciter footer. Measures the text's natural width vs the container's available width; if text fits it stays static; if it overflows it loops a smooth `Animated.timing` scroll (pause 2.2 s → scroll at 40 px/s → pause 0.8 s → instant reset). Resets on `children` change (reciter switch mid-session).
-
-### Sleep timer — circular ring
-`components/SleepTimerRing.tsx` — replaces the old pill chip. Uses `react-native-svg` (`Circle` with `strokeDasharray` + `strokeDashoffset`) to draw a gold (#e8c078) progress arc that depletes clockwise as time runs out. Shows a ☽ moon glyph + `m:ss` countdown in the centre. Tap cancels. Only visible while a timer is active.
-
-### Audio bug fixes (2026-05-02)
-Three race conditions fixed in `app/index.tsx`:
-1. **`togglePlay` state mismatch** — was checking `player.playing` (hardware state, transiently false while buffering) to decide play vs pause direction. Changed to `isPlayingRef.current` (React intent). Also immediately sets `isPlayingRef.current = false` before calling `safePause` so the stall-recovery path in the status listener cannot fight the pause within the same render cycle.
-2. **Double-fire on web** — the `endedPollId` interval and the `playbackStatusUpdate` listener could both call `handleDidFinish()` within the same 200 ms window because `indexRef.current` only updated after the React re-render. Fixed by updating `indexRef.current = cur + 1` synchronously inside `handleDidFinish` (matching the existing pattern in `goNext`/`goPrev`).
-3. **Audio diagnostic system** — `lib/audioDiagnostic.ts` defines `runAudioDiagnostics(state)` (10 checks: play consistency, pause consistency, loading state, finished state, index bounds, repeat/finished conflict, time bounds, speed validity, reciter ID, play-requires-load) and `formatDiagnostics(results)`. In `__DEV__` on web, wired to `window.__audioDiag()` and auto-runs after every play/pause toggle, logging any failures to the console.
-
-### Surah name glyphs (official calligraphic rendering)
-The plain Unicode Arabic surah name (`nameArabic` from alquran.cloud) has been replaced with official calligraphic glyphs in all three places it appears:
-
-- **Player header top-right** — `SurahNameGlyph size={28}`
-- **SurahPicker list rows** — `SurahNameGlyph size={22}` (was plain Uthmanic text with "سُورَةُ" prefix stripped)
-- **SurahPicker ayah-wheel card** — `SurahNameGlyph size={36}`
-
-**Font**: `assets/fonts/SurahNamesV1.ttf` — the KFGQPC Surah Names font v1, sourced from [qul.tarteel.ai/resources/font](https://qul.tarteel.ai/resources/font) (Tarteel QUL) and mirrored in the [quran/quran.com-frontend-next](https://github.com/quran/quran.com-frontend-next) open-source repo. Registered as `SurahNamesV1` in `_layout.tsx`.
-
-**Glyph encoding**: BCD (Binary-Coded Decimal). Each surah number N is zero-padded to 3 digits and those decimal digits are interpreted as hex nibbles, then added to `0xE000`:
-```
-surahGlyphChar(n) = String.fromCodePoint(0xE000 + parseInt(n.toString().padStart(3,'0'), 16))
-surahGlyphChar(1)   → parseInt("001", 16) = 1   → U+E001
-surahGlyphChar(10)  → parseInt("010", 16) = 16  → U+E010
-surahGlyphChar(100) → parseInt("100", 16) = 256 → U+E100
-surahGlyphChar(114) → parseInt("114", 16) = 276 → U+E114
-```
-The font covers U+E001–U+E114 (114 glyphs, one per surah). U+E000 and U+E115 exist in the font but map to no real surah.
-
-**Component**: `components/SurahNameGlyph.tsx` — accepts `surah`, `size`, `color`, `style`, `numberOfLines`. Uses `adjustsFontSizeToFit` so long surah names (e.g. Surah 3) never overflow their container.
-
-**`nameArabic` field preserved**: still stored in `quran.json` and `quran.ts` — used for accessibility labels. The `data/quran.ts` type and `quran.json` are unchanged.
-
-### Scroll edge-fade for long ayahs
-Long ayahs that exceed the visible stage height are manually scrollable. Two `LinearGradient` overlays — one at the top edge, one at the bottom — dissolve the text softly as it crosses each boundary, so the clip never looks hard or abrupt.
-
-**Behaviour**:
-- **Bottom fade** — visible (opacity 1) when the ayah first loads with overflow, signals to the reader that more text exists below. Fades to 0 as the user scrolls toward the end.
-- **Top fade** — invisible at position 0, ramps to opacity 1 as the user scrolls down, indicating text has passed above.
-- Each gradient transitions over `FADE_ZONE = 44 dp` of scroll travel — fast enough to feel responsive, slow enough to feel soft.
-- No auto-movement whatsoever. The user is always in full control.
-
-**Implementation**: `AyahView` component at the bottom of `app/index.tsx` (after `styles`). Two `Animated.Value`s (`topFade`, `bottomFade`) updated via `onScroll` handler (`scrollEventThrottle={16}`) using `setValue` (no animation tween — the scroll gesture itself is the motion). `maybeShowInitialBottom()` sets `bottomFade` to 1 on `onContentSizeChange`/`onLayout` when overflow is detected. Resets on `ayah.globalNumber` change. Gradient bands are 80 dp tall, `colors: ["rgba(0,0,0,0.88)", "transparent"]` (top) and `["transparent", "rgba(0,0,0,0.88)"]` (bottom).
-
-### Playback speed control
-Six speeds: 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2× (default 1×). Persisted via `settings.playbackSpeed` (type `PlaybackSpeed`, stored in AsyncStorage v5 key, backward-compat defaults to 1 if missing or invalid).
-
-- **Footer speed pill**: a small `1×` / `1.25×` etc. badge in the bottom-right corner of the transport row. Tap to cycle to the next speed (wraps 2× → 0.5×), matching the Apple Podcasts and Apple Books pattern.
-- **Settings panel speed row**: six pills under the Playback section, identical visual language to the Sleep timer pills. Both surfaces show the same selection.
-- **Implementation**: `player.rate` + `player.shouldCorrectPitch = true` are set in `getPlayer()` on construction, and in a dedicated `useEffect([settings.playbackSpeed])` that applies the rate to `currentRecitationPlayerRef.current` whenever the setting changes mid-session.
-- `PLAYBACK_SPEEDS` and `PlaybackSpeed` are exported from `lib/useSettings.ts`; `PLAYBACK_SPEEDS.indexOf()` is used in `cycleSpeed` to advance the selection.
-
-### Audio — instant reciter switching (zero bleed)
-`handleReciterChange` now calls `safePause(currentRecitationPlayerRef.current)` **before** calling `setReciter`. This silences the outgoing player immediately, before React even schedules the state update that triggers the bundle rebuild. Previously, the old player would continue playing until the bundle teardown `useEffect` ran (which could be several frames later).
-
-### Audio — reciter switching architecture
-The `bundle` useMemo is keyed on **both** `surah.number` and `settings.reciterId`. Changing either tears down all existing `AudioPlayer` instances and builds a fresh set, ensuring the new reciter's CDN URLs are used from the very next play.
-
-- `getPlayer` useCallback has `[bundle, ayahs, settings.reciterId]` as deps — stale closure is impossible.
-- `handleReciterChange` (not `setReciter` directly) is passed to both `ReciterSheet` and `SettingsPanel`. It captures `isPlayingRef.current` into `reciterChangedRef` so the audio effect can auto-resume on the new player if audio was playing at switch time.
-- `currentRecitationPlayerRef` always points to the live player. The sleep-timer reads it (instead of `bundle.players[idx]`) so it can fade/pause the correct player even after a bundle rebuild.
-
-### Verse transition — sequential crossfade (binary toggle)
-The multi-speed transition picker (Instant / Quick / Smooth / Slow / Through black) has been replaced with a single binary toggle in Settings → Verse transition:
-
-- **Crossfade ON** (default): the current verse fades **out** completely over 700 ms, then the next verse fades **in** over 700 ms. The two verses are never simultaneously visible — there is no overlap, no merge, no blending moment.
-- **Crossfade OFF**: verses snap instantly with no animation.
-
-`lib/transitions.ts` now exports only `TransitionMode = "instant" | "crossfade"` and `CROSSFADE_DURATION_MS = 700`. The old `duration`, `throughBlack`, and multi-option `TRANSITIONS` array are gone. The SettingsPanel shows a `ToggleSwitch` row (same component used for "Dim background" and "Auto-play next surah") instead of a list picker. `settings.transition` is still the persisted field; any old value not in `["instant","crossfade"]` falls back to `"crossfade"`.
-
-The animation in `app/index.tsx` uses `.start(({ finished }) => { ... })` callbacks — the fade-in leg only begins once the fade-out **completes**, and if an animation is interrupted (fast skip) the callback is skipped via the `finished` guard.
-
-### Audio — error handling and web fixes
-- **Load timeout**: if a player hasn't emitted `isLoaded: true` after 12 s (e.g. CDN error, network failure), `isLoading` is cleared and `audioError` is set. The play button shows a red ⚠️ instead of an infinite spinner. Tapping play clears the error and retries.
-- **Web `onended` poll**: expo-audio v1.1.0's `AudioPlayerWeb.onended` only resets an internal timer — it never emits a `playbackStatusUpdate` with `didJustFinish: true`, and `ontimeupdate` stops firing after the media ends. A `setInterval` at 200 ms polls `player.currentTime >= player.duration - 0.5` on web so ayah auto-advance works correctly in the browser.
-
-### Skip throttle (race-condition fix)
-Rapid taps on prev / next used to leave the player desynced (paused player + isPlaying still true, dead controls) because each tap fired a fresh pause/seek/play sequence on top of the previous one. Two defenses in `app/index.tsx`:
-1. `skipLockRef` ignores any tap within `SKIP_COOLDOWN_MS` (220 ms) of the previous one. Single taps still feel instant; a frantic burst is collapsed to one transition.
-2. `indexRef.current` is updated **synchronously** inside `goPrev` / `goNext` before the React `setIndex` so the *next* allowed tap reads the post-skip index, not the stale one. `setIsPlaying(true)` is also called inside `wasPlaying` branches to keep the play-icon state in lockstep with the player we just kicked off (the audio listener can briefly emit `playing=false` during a fast pause/play swap).
-
-### Preserved source files (for reference during the Expo rebuild)
-- `.local/preserved/al-fatiha.ts` — surah data (use as-is)
-- `.local/preserved/transitions.ts` — transition mode constants (use as-is)
-- `.local/preserved/UthmanicHafs.otf` — Arabic font (copy into `assets/fonts/`)
-- `.local/preserved/player.web.tsx` — original web player component (rewrite for RN)
-- `.local/preserved/SettingsPanel.web.tsx` — original web settings panel (rewrite for RN)
-- `.local/preserved/useSettings.web.ts` — settings hook (rewrite to use AsyncStorage)
+- **TypeScript**: 5.9
+- **Mobile Framework**: Expo / React Native
+- **Audio Library**: `expo-audio` (version 1.1.0)
+- **Haptics**: `expo-haptics`
+- **SVG**: `react-native-svg`
+- **API (backend)**: Express 5 (if API server is active)
+- **Database (backend)**: PostgreSQL + Drizzle ORM (if API server is active)
+- **Validation**: Zod (`zod/v4`), `drizzle-zod` (if API server is active)
+- **API Codegen**: Orval (if API server is active)
+- **Build Tool**: esbuild
+- **Quran CDN**: `cdn.islamic.network` (for audio streaming)
+- **Quran Data Sources**: `api.quran.com/api/v4/quran/verses/uthmani`, `alquran.cloud` (for `quran.json` generation)
+- **Surah Names Font Source**: `qul.tarteel.ai/resources/font` (Tarteel QUL)
