@@ -1760,29 +1760,40 @@ const styles = StyleSheet.create({
     flex: 1,
     overflow: "hidden",
   },
-  ayahRevealGradient: {
+  ayahFadeTop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+    pointerEvents: "none",
+  },
+  ayahFadeBottom: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: 120,
+    height: 80,
+    pointerEvents: "none",
   },
 });
 
-// ─── AyahReveal ──────────────────────────────────────────────────────────────
-// Renders a single ayah (Arabic + translation). When the combined text is taller
-// than the available viewport, it:
-//   1. Shows a soft gradient mask at the bottom edge (hinting at overflow)
-//   2. After a calm initial reading pause, smoothly auto-scrolls the overflow
-//      content into view at a deliberate reading pace
-//   3. Fades the gradient mask out once the bottom is reached
+// ─── AyahView ────────────────────────────────────────────────────────────────
+// Renders a single ayah (Arabic + translation).
 //
-// The user never needs to scroll manually. The effect feels like breathing text.
+// For long ayahs that exceed the visible stage height the user scrolls
+// manually. Two LinearGradient overlays — one pinned to the top edge, one to
+// the bottom — dissolve the text as it crosses the boundary so the clip never
+// looks hard or abrupt. Their opacities are driven directly by onScroll, so
+// they are always perfectly in sync with the user's finger (no timers, no
+// animation delays, no auto-movement of any kind).
+//
+//   • Bottom fade  opacity 1 → 0  as user scrolls toward the end
+//   • Top fade     opacity 0 → 1  as user scrolls away from the top
+//
+// Each fade transitions over FADE_ZONE dp of scroll travel.
 
-const REVEAL_SCROLL_DP_PER_S = 38;      // scroll speed — calm, reading pace
-const REVEAL_MIN_DURATION_MS = 6000;    // floor: at least 6 s of scroll
-const REVEAL_START_DELAY_MS  = 2200;    // wait for crossfade (1400ms) + reading start
-const REVEAL_OVERFLOW_THRESHOLD = 28;   // ignore sub-pixel rounding noise
+const FADE_ZONE = 44; // dp — distance over which the gradient ramps 0↔1
 
 type AyahViewProps = {
   ayah: { arabic: string; translation: string; number: number; globalNumber: number };
@@ -1803,86 +1814,55 @@ function AyahView({
   translationFontSize,
   onTap,
 }: AyahViewProps) {
-  const scrollRef    = useRef<ScrollView>(null);
-  const viewportH    = useRef(0);
-  const contentH     = useRef(0);
-  const scrollY      = useRef(new Animated.Value(0)).current;
-  const gradOpacity  = useRef(new Animated.Value(0)).current;
-  const hasStarted   = useRef(false);
-  const animRef      = useRef<Animated.CompositeAnimation | null>(null);
-  const timerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMounted    = useRef(true);
+  const topFade    = useRef(new Animated.Value(0)).current;
+  const bottomFade = useRef(new Animated.Value(0)).current;
 
-  // Drive programmatic scroll: Animated.Value → scrollTo (no native driver so
-  // JS-thread animation, but the scroll rate is slow enough that JS is fine).
+  // Track whether the bottom gradient should be visible at all (only when the
+  // content actually overflows). Set via onContentSizeChange + onLayout.
+  const viewportH  = useRef(0);
+  const contentH   = useRef(0);
+
+  // Initialise / reset the gradient state whenever the ayah changes.
+  // Each ayah gets a fresh component instance (keyed by globalNumber) so this
+  // is mainly a safety guard against edge-case instance reuse.
   useEffect(() => {
-    const listenerId = scrollY.addListener(({ value }) => {
-      scrollRef.current?.scrollTo({ y: value, animated: false });
-    });
-    return () => scrollY.removeListener(listenerId);
-  }, [scrollY]);
+    topFade.setValue(0);
+    bottomFade.setValue(0);
+    viewportH.current = 0;
+    contentH.current  = 0;
+  }, [ayah.globalNumber, topFade, bottomFade]);
 
-  // Cleanup on unmount (component exits when its ayah is no longer live).
-  useEffect(() => {
-    return () => {
-      isMounted.current = false;
-      if (timerRef.current) clearTimeout(timerRef.current);
-      animRef.current?.stop();
-    };
-  }, []);
+  // After either dimension is measured, show the bottom gradient if the
+  // content is taller than the viewport (before the user has scrolled).
+  const maybeShowInitialBottom = useCallback(() => {
+    if (viewportH.current > 0 && contentH.current > 0) {
+      const maxScroll = contentH.current - viewportH.current;
+      bottomFade.setValue(maxScroll > FADE_ZONE ? 1 : Math.max(0, maxScroll / FADE_ZONE));
+    }
+  }, [bottomFade]);
 
-  // Reset all animation state when the ayah this instance represents changes.
-  // Normally each ayah gets its own component instance (keyed by globalNumber),
-  // but this is a safety net against any edge-case reuse.
-  useEffect(() => {
-    hasStarted.current = false;
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    animRef.current?.stop(); animRef.current = null;
-    scrollY.setValue(0);
-    scrollRef.current?.scrollTo({ y: 0, animated: false });
-    gradOpacity.setValue(0);
-  }, [ayah.globalNumber, gradOpacity, scrollY]);
+  // Called on every scroll frame. Updates both gradient opacities instantly
+  // so they track the scroll position with zero lag.
+  const handleScroll = useCallback(
+    (e: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      const y         = contentOffset.y;
+      const maxScroll = Math.max(0, contentSize.height - layoutMeasurement.height);
 
-  // Called after both viewport and content heights are known. Idempotent.
-  const maybeStartReveal = useCallback(() => {
-    if (hasStarted.current) return;
-    if (viewportH.current <= 0 || contentH.current <= 0) return;
-    const overflow = contentH.current - viewportH.current;
-    if (overflow <= REVEAL_OVERFLOW_THRESHOLD) return;
+      // Top fade: invisible at y=0, fully opaque at y=FADE_ZONE.
+      topFade.setValue(Math.min(1, y / FADE_ZONE));
 
-    hasStarted.current = true;
-
-    // Show the gradient fade immediately so the user knows there is more text.
-    gradOpacity.setValue(1);
-
-    // After the initial reading pause, begin the slow scroll.
-    timerRef.current = setTimeout(() => {
-      if (!isMounted.current) return;
-
-      const duration = Math.max(
-        (overflow / REVEAL_SCROLL_DP_PER_S) * 1000,
-        REVEAL_MIN_DURATION_MS,
+      // Bottom fade: fully opaque when far from the bottom, invisible at bottom.
+      bottomFade.setValue(
+        maxScroll > 0 ? Math.min(1, (maxScroll - y) / FADE_ZONE) : 0,
       );
 
-      const anim = Animated.timing(scrollY, {
-        toValue: overflow,
-        duration,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: false,
-      });
-      animRef.current = anim;
-
-      anim.start(({ finished }) => {
-        if (!finished || !isMounted.current) return;
-        // Dissolve the gradient once the bottom is fully revealed.
-        Animated.timing(gradOpacity, {
-          toValue: 0,
-          duration: 700,
-          useNativeDriver: true,
-        }).start();
-      });
-    }, REVEAL_START_DELAY_MS);
-  }, [gradOpacity, scrollY]);
+      // Keep dimension refs in sync (layout changes on orientation flip, etc.)
+      viewportH.current = layoutMeasurement.height;
+      contentH.current  = contentSize.height;
+    },
+    [topFade, bottomFade],
+  );
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>
@@ -1890,20 +1870,20 @@ function AyahView({
         style={styles.ayahRevealContainer}
         onLayout={(e) => {
           viewportH.current = e.nativeEvent.layout.height;
-          maybeStartReveal();
+          maybeShowInitialBottom();
         }}
       >
-        {/* scrollEnabled=false: all scrolling is programmatic via scrollY */}
         <ScrollView
-          ref={scrollRef}
           contentContainerStyle={[styles.verseBox, { paddingVertical: 16 }]}
           showsVerticalScrollIndicator={false}
           bounces={false}
-          scrollEnabled={false}
+          scrollEnabled
           keyboardShouldPersistTaps="always"
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
           onContentSizeChange={(_, h) => {
             contentH.current = h;
-            maybeStartReveal();
+            maybeShowInitialBottom();
           }}
         >
           <Pressable onPress={onTap} android_disableSound style={styles.verseInner}>
@@ -1923,15 +1903,18 @@ function AyahView({
           </Pressable>
         </ScrollView>
 
-        {/* Soft gradient mask — fades overflow text into darkness at the bottom
-            edge, making the clip feel intentional rather than abrupt. Mirroring
-            the treatment Apple uses in the Podcasts / Books reading experience. */}
-        <Animated.View
-          style={[styles.ayahRevealGradient, { opacity: gradOpacity }]}
-          pointerEvents="none"
-        >
+        {/* Top dissolve — text gently fades as it scrolls behind the top edge */}
+        <Animated.View style={[styles.ayahFadeTop, { opacity: topFade }]}>
           <LinearGradient
-            colors={["transparent", "rgba(0,0,0,0.93)"]}
+            colors={["rgba(0,0,0,0.88)", "transparent"]}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+
+        {/* Bottom dissolve — signals overflow and dissolves text at the bottom */}
+        <Animated.View style={[styles.ayahFadeBottom, { opacity: bottomFade }]}>
+          <LinearGradient
+            colors={["transparent", "rgba(0,0,0,0.88)"]}
             style={StyleSheet.absoluteFill}
           />
         </Animated.View>
