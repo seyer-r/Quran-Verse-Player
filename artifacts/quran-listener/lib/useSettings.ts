@@ -27,6 +27,19 @@ import {
 export const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 
+/**
+ * Repeat mode for the current ayah.
+ *  - 'off'  → play once and advance (default)
+ *  - 'loop' → repeat indefinitely until the user turns it off
+ *  - 2–7    → repeat exactly N times, then advance automatically
+ */
+export type RepeatMode = "off" | "loop" | 2 | 3 | 5 | 7;
+export const REPEAT_MODE_CYCLE: RepeatMode[] = ["off", "loop", 2, 3, 5, 7];
+export function nextRepeatMode(mode: RepeatMode): RepeatMode {
+  const i = REPEAT_MODE_CYCLE.indexOf(mode);
+  return REPEAT_MODE_CYCLE[(i + 1) % REPEAT_MODE_CYCLE.length];
+}
+
 // v5: UthmanicHafs v18 has been patched in-place (scripts/patch-font.py) to
 // fix the root cause of the U+25CC dotted-circle rendering bug. The patch
 // applies three coordinated font-table edits:
@@ -125,12 +138,11 @@ export interface Settings {
    */
   playbackSpeed: PlaybackSpeed;
   /**
-   * When true, the current ayah is looped indefinitely rather than
-   * advancing to the next one when it finishes. Useful for memorisation.
-   * Defaults to false. Session-only — not persisted across launches so the
-   * user never accidentally starts in loop mode.
+   * Repeat mode for the current ayah.
+   * Session-only — always resets to 'off' on launch so the user never
+   * accidentally starts stuck in a loop.
    */
-  repeatAyah: boolean;
+  repeatMode: RepeatMode;
 }
 
 const DEFAULT_AUTOPLAY_NEXT_SURAH = true;
