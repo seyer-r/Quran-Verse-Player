@@ -1,5 +1,6 @@
 import { SymbolIcon } from "@/components/SymbolIcon";
 import { VideoSwatch } from "@/components/VideoBackground";
+import { ARABIC_FONT_SCALES, type ArabicFontScale } from "@/lib/useSettings";
 import { Image } from "expo-image";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -51,6 +52,7 @@ interface SettingsPanelProps {
   autoplayNextSurah: boolean;
   backgroundDim: boolean;
   sleepTimerMinutes: number | null;
+  arabicFontScale: ArabicFontScale;
   onTransitionChange: (mode: TransitionMode) => void;
   onBackgroundChange: (id: BackgroundId) => void;
   onAmbientChange: (id: AmbientId) => void;
@@ -58,6 +60,7 @@ interface SettingsPanelProps {
   onAutoplayNextSurahChange: (next: boolean) => void;
   onBackgroundDimChange: (next: boolean) => void;
   onSleepTimerChange: (minutes: number | null) => void;
+  onArabicFontScaleChange: (scale: ArabicFontScale) => void;
 }
 
 const SLEEP_OPTIONS: { label: string; shortLabel: string; minutes: number | null }[] = [
@@ -82,6 +85,7 @@ export function SettingsPanel({
   autoplayNextSurah,
   backgroundDim,
   sleepTimerMinutes,
+  arabicFontScale,
   onTransitionChange,
   onBackgroundChange,
   onAmbientChange,
@@ -89,6 +93,7 @@ export function SettingsPanel({
   onAutoplayNextSurahChange,
   onBackgroundDimChange,
   onSleepTimerChange,
+  onArabicFontScaleChange,
 }: SettingsPanelProps) {
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -332,6 +337,18 @@ export function SettingsPanel({
               </View>
             </View>
 
+            {/* === TEXT SIZE === */}
+            <SectionHeader title="Text size" style={{ marginTop: 28 }} />
+            <View style={styles.group}>
+              <View style={[styles.row, { paddingVertical: 14 }]}>
+                <FontSizeStepper
+                  value={arabicFontScale}
+                  steps={ARABIC_FONT_SCALES}
+                  onChange={onArabicFontScaleChange}
+                />
+              </View>
+            </View>
+
             {/* === AMBIENT SOUND === */}
             <SectionHeader title="Ambient sound" style={{ marginTop: 28 }} />
             <View style={styles.group}>
@@ -535,6 +552,75 @@ function SectionHeader({
   style?: object;
 }) {
   return <Text style={[styles.sectionHeader, style]}>{title}</Text>;
+}
+
+/**
+ * Apple-style "A — dots — A" font size stepper.
+ * Tapping the small A steps down, tapping the large A steps up.
+ * Tapping a dot jumps directly to that step.
+ */
+function FontSizeStepper({
+  value,
+  steps,
+  onChange,
+}: {
+  value: number;
+  steps: readonly number[];
+  onChange: (v: number) => void;
+}) {
+  const idx = (steps as readonly number[]).indexOf(value);
+  const canDecrease = idx > 0;
+  const canIncrease = idx < steps.length - 1;
+
+  return (
+    <View style={styles.fontStepper}>
+      {/* Small A — decrease */}
+      <TouchableOpacity
+        onPress={() => canDecrease && onChange(steps[idx - 1] as any)}
+        disabled={!canDecrease}
+        hitSlop={12}
+        activeOpacity={0.6}
+        accessibilityLabel="Decrease text size"
+        style={[styles.fontStepperBtn, !canDecrease && styles.fontStepperBtnDisabled]}
+      >
+        <Text style={styles.fontStepperSmallA}>A</Text>
+      </TouchableOpacity>
+
+      {/* Hairline + dots + hairline */}
+      <View style={styles.fontStepperCenter}>
+        <View style={styles.fontStepperLine} />
+        {steps.map((s, i) => (
+          <TouchableOpacity
+            key={i}
+            onPress={() => onChange(s as any)}
+            hitSlop={10}
+            activeOpacity={0.7}
+            accessibilityLabel={`Text size ${Math.round((s as number) * 100)}%`}
+          >
+            <View
+              style={[
+                styles.fontStepperDot,
+                value === s && styles.fontStepperDotActive,
+              ]}
+            />
+          </TouchableOpacity>
+        ))}
+        <View style={styles.fontStepperLine} />
+      </View>
+
+      {/* Large A — increase */}
+      <TouchableOpacity
+        onPress={() => canIncrease && onChange(steps[idx + 1] as any)}
+        disabled={!canIncrease}
+        hitSlop={12}
+        activeOpacity={0.6}
+        accessibilityLabel="Increase text size"
+        style={[!canIncrease && styles.fontStepperBtnDisabled]}
+      >
+        <Text style={styles.fontStepperLargeA}>A</Text>
+      </TouchableOpacity>
+    </View>
+  );
 }
 
 /**
@@ -854,6 +940,57 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#737373",
     lineHeight: 18,
+  },
+
+  // Font size stepper (Apple-style "A — dots — A")
+  fontStepper: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    gap: 2,
+  },
+  fontStepperBtn: {
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fontStepperBtnDisabled: {
+    opacity: 0.28,
+  },
+  fontStepperSmallA: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#d4d4d4",
+    lineHeight: 20,
+  },
+  fontStepperLargeA: {
+    fontSize: 22,
+    fontWeight: "500",
+    color: "#d4d4d4",
+    lineHeight: 28,
+  },
+  fontStepperCenter: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  fontStepperLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  fontStepperDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  fontStepperDotActive: {
+    backgroundColor: "#e8c078",
+    transform: [{ scale: 1.3 }],
   },
 
   // Toggle switch

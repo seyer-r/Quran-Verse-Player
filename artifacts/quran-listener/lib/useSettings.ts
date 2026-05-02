@@ -27,6 +27,10 @@ import {
 export const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 
+/** Arabic text size multipliers — applied on top of the responsive base size. */
+export const ARABIC_FONT_SCALES = [0.8, 0.9, 1.0, 1.15, 1.3] as const;
+export type ArabicFontScale = (typeof ARABIC_FONT_SCALES)[number];
+
 // v5: UthmanicHafs v18 has been patched in-place (scripts/patch-font.py) to
 // fix the root cause of the U+25CC dotted-circle rendering bug. The patch
 // applies three coordinated font-table edits:
@@ -131,12 +135,18 @@ export interface Settings {
    * user never accidentally starts in loop mode.
    */
   repeatAyah: boolean;
+  /**
+   * Scale multiplier applied on top of the responsive Arabic base font size.
+   * Allows the user to make the verse text larger or smaller to their liking.
+   */
+  arabicFontScale: ArabicFontScale;
 }
 
 const DEFAULT_AUTOPLAY_NEXT_SURAH = true;
 const DEFAULT_BACKGROUND_DIM = true;
 const DEFAULT_PLAYBACK_SPEED: PlaybackSpeed = 1;
 const DEFAULT_REPEAT_AYAH = false;
+const DEFAULT_ARABIC_FONT_SCALE: ArabicFontScale = 1.0;
 
 const defaultSettings: Settings = {
   transition: DEFAULT_TRANSITION,
@@ -151,6 +161,7 @@ const defaultSettings: Settings = {
   reciterId: DEFAULT_RECITER,
   playbackSpeed: DEFAULT_PLAYBACK_SPEED,
   repeatAyah: DEFAULT_REPEAT_AYAH,
+  arabicFontScale: DEFAULT_ARABIC_FONT_SCALE,
 };
 
 const isValidTransition = (v: unknown): v is TransitionMode =>
@@ -190,6 +201,8 @@ const isValidArabicFont = (v: unknown): v is ArabicFontId =>
   typeof v === "string" && ARABIC_FONTS.some((f) => f.id === v);
 const isValidReciter = (v: unknown): v is ReciterId =>
   typeof v === "string" && RECITERS.some((r) => r.id === v);
+const isValidFontScale = (v: unknown): v is ArabicFontScale =>
+  (ARABIC_FONT_SCALES as readonly number[]).includes(v as number);
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -231,6 +244,9 @@ export function useSettings() {
             // repeatAyah is intentionally reset to false on every launch
             // so the user never wakes up to a stuck loop.
             repeatAyah: DEFAULT_REPEAT_AYAH,
+            arabicFontScale: isValidFontScale(parsed.arabicFontScale)
+              ? parsed.arabicFontScale
+              : DEFAULT_ARABIC_FONT_SCALE,
           });
         }
       } catch {
@@ -271,6 +287,8 @@ export function useSettings() {
     setSettings((s) => ({ ...s, playbackSpeed }));
   const setRepeatAyah = (repeatAyah: boolean) =>
     setSettings((s) => ({ ...s, repeatAyah }));
+  const setArabicFontScale = (arabicFontScale: ArabicFontScale) =>
+    setSettings((s) => ({ ...s, arabicFontScale }));
 
   /**
    * Atomically update both surah and ayah. The ayah is clamped to the new
@@ -307,6 +325,7 @@ export function useSettings() {
     setAutoplayNextSurah,
     setBackgroundDim,
     setArabicFont,
+    setArabicFontScale,
     setPosition,
     setAyah,
   };

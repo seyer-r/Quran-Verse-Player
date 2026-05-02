@@ -53,6 +53,8 @@ import {
   useSettings,
   PLAYBACK_SPEEDS,
   type PlaybackSpeed,
+  ARABIC_FONT_SCALES,
+  type ArabicFontScale,
 } from "@/lib/useSettings";
 import { useRecentSurahs } from "@/lib/useRecentSurahs";
 import { useBookmarks } from "@/lib/useBookmarks";
@@ -85,6 +87,7 @@ export default function PlayerScreen() {
     setRepeatAyah,
     setAutoplayNextSurah,
     setBackgroundDim,
+    setArabicFontScale,
     setPosition,
     setAyah: persistAyah,
   } = useSettings();
@@ -1219,14 +1222,14 @@ export default function PlayerScreen() {
 
   const computeArabicFontSize = useCallback(
     (charLen: number) => {
-      const base = baseArabicFontSize;
-      if (charLen > 1000) return Math.max(22, Math.round(base * 0.6));
-      if (charLen > 500) return Math.max(24, Math.round(base * 0.7));
-      if (charLen > 250) return Math.max(28, Math.round(base * 0.82));
-      if (charLen > 120) return Math.max(30, Math.round(base * 0.92));
+      const base = Math.round(baseArabicFontSize * settings.arabicFontScale);
+      if (charLen > 1000) return Math.max(18, Math.round(base * 0.6));
+      if (charLen > 500) return Math.max(20, Math.round(base * 0.7));
+      if (charLen > 250) return Math.max(22, Math.round(base * 0.82));
+      if (charLen > 120) return Math.max(24, Math.round(base * 0.92));
       return base;
     },
-    [baseArabicFontSize],
+    [baseArabicFontSize, settings.arabicFontScale],
   );
 
   // Tighter line-height on long ayahs — the default 1.9× stacks the lines
@@ -1621,6 +1624,8 @@ export default function PlayerScreen() {
         onBackgroundChange={setBackground}
         onAmbientChange={handleAmbientChange}
         onAmbientVolumeChange={handleAmbientVolumeChange}
+        arabicFontScale={settings.arabicFontScale}
+        onArabicFontScaleChange={setArabicFontScale}
         onAutoplayNextSurahChange={setAutoplayNextSurah}
         onBackgroundDimChange={setBackgroundDim}
         onSleepTimerChange={setSleepTimerMinutes}
