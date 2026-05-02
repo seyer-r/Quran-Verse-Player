@@ -152,6 +152,20 @@ Sources:
 ### Background dim toggle
 `settings.backgroundDim` (default `true`, persisted in AsyncStorage v3 payload, missing field coerced to `true` for backwards compatibility). When `true`, the player renders the standard 4-stop dark scrim over the photo background. When `false`, the scrim becomes near-transparent except for a faint bottom vignette so the footer controls and reciter label stay legible against bright skies. Toggle lives in the **Background** section of the settings panel (sun icon).
 
+**Dim text visibility fix**: All secondary-label text in the header/footer (`eyebrow`, `surahMeaning`, `counter`, `reciterEyebrow`, `reciterName`) now carries `textShadow` and, when any background is active, their grey colour is lifted from `#8e8e93` to `#aeaeb2` (dim OFF) or `#b0b0b8` (dim ON) via a computed `secondaryOverride` applied inline. This ensures contrast ≥ 4.5:1 against both bright video frames and the dimmed scrim.
+
+### Reciter name — marquee scroll
+`components/MarqueeText.tsx` — drop-in replacement for `<Text numberOfLines={1}>` in the reciter footer. Measures the text's natural width vs the container's available width; if text fits it stays static; if it overflows it loops a smooth `Animated.timing` scroll (pause 2.2 s → scroll at 40 px/s → pause 0.8 s → instant reset). Resets on `children` change (reciter switch mid-session).
+
+### Sleep timer — circular ring
+`components/SleepTimerRing.tsx` — replaces the old pill chip. Uses `react-native-svg` (`Circle` with `strokeDasharray` + `strokeDashoffset`) to draw a gold (#e8c078) progress arc that depletes clockwise as time runs out. Shows a ☽ moon glyph + `m:ss` countdown in the centre. Tap cancels. Only visible while a timer is active.
+
+### Audio bug fixes (2026-05-02)
+Three race conditions fixed in `app/index.tsx`:
+1. **`togglePlay` state mismatch** — was checking `player.playing` (hardware state, transiently false while buffering) to decide play vs pause direction. Changed to `isPlayingRef.current` (React intent). Also immediately sets `isPlayingRef.current = false` before calling `safePause` so the stall-recovery path in the status listener cannot fight the pause within the same render cycle.
+2. **Double-fire on web** — the `endedPollId` interval and the `playbackStatusUpdate` listener could both call `handleDidFinish()` within the same 200 ms window because `indexRef.current` only updated after the React re-render. Fixed by updating `indexRef.current = cur + 1` synchronously inside `handleDidFinish` (matching the existing pattern in `goNext`/`goPrev`).
+3. **Audio diagnostic system** — `lib/audioDiagnostic.ts` defines `runAudioDiagnostics(state)` (10 checks: play consistency, pause consistency, loading state, finished state, index bounds, repeat/finished conflict, time bounds, speed validity, reciter ID, play-requires-load) and `formatDiagnostics(results)`. In `__DEV__` on web, wired to `window.__audioDiag()` and auto-runs after every play/pause toggle, logging any failures to the console.
+
 ### Surah name glyphs (official calligraphic rendering)
 The plain Unicode Arabic surah name (`nameArabic` from alquran.cloud) has been replaced with official calligraphic glyphs in all three places it appears:
 

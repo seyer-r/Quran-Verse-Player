@@ -33,8 +33,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { MarqueeText } from "@/components/MarqueeText";
 import { ReciterSheet } from "@/components/ReciterSheet";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { SleepTimerRing } from "@/components/SleepTimerRing";
 import { SurahPicker } from "@/components/SurahPicker";
 import { VideoBackground } from "@/components/VideoBackground";
 import { AMBIENT_OPTIONS, type AmbientId, getAmbient } from "@/data/ambient";
@@ -48,6 +50,10 @@ import {
 } from "@/data/quran";
 import { getReciter, type ReciterId } from "@/data/reciters";
 import { getTransition, CROSSFADE_DURATION_MS } from "@/lib/transitions";
+import {
+  runAudioDiagnostics,
+  formatDiagnostics,
+} from "@/lib/audioDiagnostic";
 import {
   getArabicFont,
   useSettings,
@@ -213,6 +219,57 @@ export default function PlayerScreen() {
       }).start();
     }
   }, [verseMenuVisible, menuScale]);
+
+  // Dev-only: expose runAudioDiagnostics to the browser console so it can be
+  // invoked at any time with `window.__audioDiag()` without instrumenting prod
+  // code. The snapshot is captured fresh on every call so it always reflects
+  // the live state. Also auto-runs after each play/pause toggle and logs any
+  // failures so regressions surface immediately in the browser console.
+  useEffect(() => {
+    if (!__DEV__ || Platform.OS !== "web") return;
+    const snap = () => {
+      const player = currentRecitationPlayerRef.current;
+      return runAudioDiagnostics({
+        isPlaying,
+        hasFinished,
+        isLoading,
+        audioError,
+        repeatAyah: settings.repeatAyah,
+        index,
+        ayahCount: ayahs.length,
+        playerLoaded: player?.isLoaded ?? false,
+        playerPlaying:
+          (player as unknown as { playing?: boolean })?.playing ?? false,
+        playerDuration: player?.duration ?? 0,
+        playerCurrentTime: player?.currentTime ?? 0,
+        playbackSpeed: settings.playbackSpeed,
+        reciterId: settings.reciterId,
+      });
+    };
+    // Expose to console: window.__audioDiag()
+    (window as unknown as Record<string, unknown>).__audioDiag = () => {
+      const results = snap();
+      // eslint-disable-next-line no-console
+      console.log(formatDiagnostics(results));
+      return results;
+    };
+    // Auto-run and surface failures only (no-op when everything passes).
+    const results = snap();
+    const failures = results.filter((r) => !r.passed);
+    if (failures.length) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[audio] ${failures.length} diagnostic failure(s):\n` +
+          failures
+            .map(
+              (f) =>
+                `  ✗ [${f.id}] ${f.description}${f.note ? ` — ${f.note}` : ""}`,
+            )
+            .join("\n"),
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, hasFinished, isLoading, audioError]);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimer.current) {
@@ -603,6 +660,11 @@ export default function PlayerScreen() {
         if (isPlayingRef.current) {
           safePlay(next);
         }
+        // Update the ref synchronously so the web ended-poll — which checks
+        // indexRef.current !== index before calling handleDidFinish — sees
+        // the new index immediately and cannot double-fire within the same
+        // 200 ms interval before the React state update propagates.
+        indexRef.current = cur + 1;
         setIndex(cur + 1);
       } else {
         // End of surah.
@@ -1041,7 +1103,14 @@ export default function PlayerScreen() {
       return;
     }
     const player = getPlayer(cur);
-    if (player.playing) {
+    // Use isPlayingRef (React intent) rather than player.playing (hardware
+    // state) to decide direction. player.playing can transiently be false
+    // while buffering, which would otherwise flip a play→pause tap into a
+    // play→play no-op and leave the spinner running.
+    if (isPlayingRef.current) {
+      // Synchronously update the ref so the stall-recovery path in the
+      // status listener sees the correct intent before the next render.
+      isPlayingRef.current = false;
       safePause(player);
       setIsPlaying(false);
     } else {
@@ -1250,6 +1319,16 @@ export default function PlayerScreen() {
 
   const hasBg = !!activeBgOpt.source || !!activeBgOpt.videoUrl;
 
+  // When a background is active the secondary-label grey (#8e8e93) can
+  // disappear into the dimmed video frame.  Lightening it slightly when a
+  // background is shown keeps the contrast ratio above Apple's 4.5:1
+  // recommendation for secondary text on dark surfaces. Combined with the
+  // text-shadow on every secondary style, this covers both dim-on and
+  // dim-off states across all five video backgrounds.
+  const secondaryOverride = hasBg
+    ? ({ color: settings.backgroundDim ? "#b0b0b8" : "#aeaeb2" } as const)
+    : undefined;
+
   // Overall progress across the whole surah (only used for long surahs that
   // fall back to a single progress bar).
   const overallProgress =
@@ -1329,11 +1408,11 @@ export default function PlayerScreen() {
             accessibilityLabel="Choose surah"
             activeOpacity={0.7}
           >
-            <Text style={styles.eyebrow}>Surah {surah.number}</Text>
+            <Text style={[styles.eyebrow, secondaryOverride]}>Surah {surah.number}</Text>
             <View style={styles.headerLeftTitleRow}>
               <Text style={styles.surahLabel} numberOfLines={1}>
                 {surah.nameLatin}{" "}
-                <Text style={styles.surahMeaning}>— {surah.meaning}</Text>
+                <Text style={[styles.surahMeaning, secondaryOverride]}>— {surah.meaning}</Text>
               </Text>
               <SymbolIcon
                 name="chevron.down"
@@ -1382,7 +1461,7 @@ export default function PlayerScreen() {
             activeOpacity={0.7}
             accessibilityLabel="Choose ayah"
           >
-            <Text style={styles.counter}>
+            <Text style={[styles.counter, secondaryOverride]}>
               Ayah {ayahs[index].number} of {ayahs.length}
             </Text>
           </TouchableOpacity>
@@ -1429,19 +1508,12 @@ export default function PlayerScreen() {
           ]}
           pointerEvents={chromeVisible ? "auto" : "none"}
         >
-          {sleepExpiresAt != null && (
-            <TouchableOpacity
-              onPress={() => setSleepTimerMinutes(null)}
-              activeOpacity={0.7}
-              style={styles.sleepChip}
-              accessibilityLabel="Cancel sleep timer"
-              hitSlop={6}
-            >
-              <SymbolIcon name="moon.fill" fallbackIonicon="moon" size={11} color="#e8c078" />
-              <Text style={styles.sleepChipText}>
-                Sleep in {formatRemaining(sleepRemainingMs)}
-              </Text>
-            </TouchableOpacity>
+          {sleepExpiresAt != null && sleepDurationMin != null && (
+            <SleepTimerRing
+              remainingMs={sleepRemainingMs}
+              durationMin={sleepDurationMin}
+              onCancel={() => setSleepTimerMinutes(null)}
+            />
           )}
           {ayahs.length <= SEGMENTED_PROGRESS_MAX ? (
             <View style={styles.progressRow}>
@@ -1484,12 +1556,12 @@ export default function PlayerScreen() {
               hitSlop={6}
             >
               <View style={styles.reciterEyebrowRow}>
-                <Text style={styles.reciterEyebrow}>Reciter</Text>
+                <Text style={[styles.reciterEyebrow, secondaryOverride]}>Reciter</Text>
               </View>
               <View style={styles.reciterNameRow}>
-                <Text style={styles.reciterName} numberOfLines={1} ellipsizeMode="tail">
+                <MarqueeText style={styles.reciterName}>
                   {getReciter(settings.reciterId).name}
-                </Text>
+                </MarqueeText>
                 <SymbolIcon
                   name="chevron.up"
                   fallbackIonicon="chevron-up"
@@ -1864,17 +1936,26 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     color: "#8e8e93",
     fontWeight: "400",
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   surahLabel: {
     fontSize: 17,
     color: "#f5f5f5",
     fontWeight: "600",
     flexShrink: 1,
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   surahMeaning: {
     color: "#8e8e93",
     fontWeight: "400",
     fontSize: 17,
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   surahArabicGlyph: {
     maxWidth: 190,
@@ -1893,6 +1974,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     color: "#8e8e93",
     fontWeight: "400",
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   stage: {
     flex: 1,
@@ -1997,6 +2081,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     color: "#8e8e93",
     fontWeight: "400",
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   reciterNameRow: {
     flexDirection: "row",
@@ -2008,7 +2095,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#d4d4d4",
     fontWeight: "500",
-    flexShrink: 1,
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   reciterChevron: {
     flexShrink: 0,

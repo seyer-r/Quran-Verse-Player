@@ -1,0 +1,55 @@
+Here's the cleaned-up prompt:
+
+"Add the following UI enhancements and fixes to the app. The app's identity is clean, minimal, and beautiful — every change must serve that. Study Apple's Human Interface Guidelines and native apps thoroughly before touching anything.
+Rules throughout:
+
+Commit after every individual change so each stage can be reverted independently
+The app must remain fully functional at every stage
+Test on both iOS and Android after each change
+
+
+1. Dim Background — Text Visibility Fix
+When the user enables the dim background feature, the grey text in the main panel becomes obscured and unreadable. Fix this so that:
+
+Text remains legible and visible at all dim levels
+The contrast between the text and dimmed background is always sufficient
+The fix must feel natural and not look like a hack — study how Apple handles text over dark or dimmed surfaces
+
+
+2. Reciter Name — Horizontal Marquee Scroll
+The reciter name in the bottom footer is being cut off. Fix this by implementing a horizontal scrolling marquee effect, similar to how Apple Music handles long track or artist names that exceed the available width. Specifically:
+
+If the reciter name fits within the available space, it stays static
+If it is too long, it smoothly and continuously scrolls horizontally so the full name can be read
+The animation must feel smooth and polished — not janky or abrupt
+Study exactly how Apple Music implements this before building it
+
+
+3. Sleep Timer — Redesign as a Dynamic Circle
+The current sleep timer UI does not look professional. Replace it with a clean, dynamic circular timer that:
+
+Visually shows the remaining time as a circle that depletes as time runs out — similar to how Apple's Clock and Fitness apps handle circular progress
+Is placed somewhere suitable within the page that feels natural and unobtrusive
+Looks minimal and clean — not heavy or out of place
+Disappears or collapses cleanly when the timer is not active
+
+
+4. Audio Issues — Full Diagnosis and Fix
+There are several audio bugs including Ayahs repeating unexpectedly and audio not pausing correctly. Do the following:
+
+Conduct a full analysis of the audio logic — playback, pause, repeat, and transitions
+Identify every bug and its root cause
+Fix all issues so audio behaves correctly in every scenario
+Build a diagnostic test system that can be run at any time to catch audio regressions — it should test play, pause, repeat, reciter switching, speed changes, and verse transitions and report a clear pass or fail for each
+The diagnostic system should remain in the codebase for future use
+
+
+For each change:
+
+Reference Apple design standards where relevant
+Implement the change
+Verify the app is fully functional
+Commit with a clear descriptive message
+Then move to the next change
+
+Do not move on until the current change is committed and verified."
