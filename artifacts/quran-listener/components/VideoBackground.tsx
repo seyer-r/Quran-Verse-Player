@@ -38,6 +38,10 @@ export function VideoBackground({ url }: VideoBackgroundProps) {
         loop: true,
         muted: true,
         playsInline: true,
+        controls: false,
+        disablePictureInPicture: true,
+        disableRemotePlayback: true,
+        tabIndex: -1,
         style: {
           position: "absolute" as const,
           top: 0,
@@ -45,6 +49,9 @@ export function VideoBackground({ url }: VideoBackgroundProps) {
           width: "100%",
           height: "100%",
           objectFit: "cover" as const,
+          pointerEvents: "none" as const,
+          // Suppress the browser's native "not playing" overlay in all browsers
+          outline: "none",
         },
       })}
     </View>
@@ -62,6 +69,10 @@ export function VideoSwatch({ url }: { url: string }) {
         loop: true,
         muted: true,
         playsInline: true,
+        controls: false,
+        disablePictureInPicture: true,
+        disableRemotePlayback: true,
+        tabIndex: -1,
         style: {
           position: "absolute" as const,
           top: 0,
@@ -69,6 +80,8 @@ export function VideoSwatch({ url }: { url: string }) {
           width: "100%",
           height: "100%",
           objectFit: "cover" as const,
+          pointerEvents: "none" as const,
+          outline: "none",
         },
       })}
     </View>
