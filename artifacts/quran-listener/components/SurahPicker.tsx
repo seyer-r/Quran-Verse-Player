@@ -109,6 +109,22 @@ export function SurahPicker({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  // Refs for values needed inside the open/close effect that must NOT be
+  // in its dependency array — we want the effect to run ONLY when `open`
+  // changes, not when the current ayah advances during playback.
+  const initialStepRef = useRef(initialStep);
+  initialStepRef.current = initialStep;
+  const currentSurahRef = useRef(currentSurah);
+  currentSurahRef.current = currentSurah;
+  const currentAyahRef = useRef(currentAyah);
+  currentAyahRef.current = currentAyah;
+  const widthRef = useRef(width);
+  widthRef.current = width;
+  const heightRef = useRef(height);
+  heightRef.current = height;
+  const mountedRef = useRef(mounted);
+  mountedRef.current = mounted;
+
   const swipePan = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) =>
@@ -134,13 +150,18 @@ export function SurahPicker({
 
   useEffect(() => {
     if (open) {
+      // Read initial values via refs so this effect ONLY re-runs when `open`
+      // itself changes. Without this, advancing an ayah during playback
+      // (which updates `currentAyah`) would re-fire the effect and call
+      // setStep(initialStep), kicking the user back to the surah list while
+      // they were scrolling the ayah wheel.
       dragY.setValue(0);
       setMounted(true);
       setQuery("");
-      setStep(initialStep);
-      setDraftSurah(currentSurah);
-      setDraftAyah(currentAyah);
-      stepX.setValue(initialStep === "ayah" ? -width : 0);
+      setStep(initialStepRef.current);
+      setDraftSurah(currentSurahRef.current);
+      setDraftAyah(currentAyahRef.current);
+      stepX.setValue(initialStepRef.current === "ayah" ? -widthRef.current : 0);
       Animated.parallel([
         Animated.timing(slide, {
           toValue: 0,
@@ -155,10 +176,10 @@ export function SurahPicker({
           useNativeDriver: true,
         }),
       ]).start();
-    } else if (mounted) {
+    } else if (mountedRef.current) {
       Animated.parallel([
         Animated.timing(slide, {
-          toValue: height,
+          toValue: heightRef.current,
           duration: SHEET_ANIM_MS,
           easing: Easing.in(Easing.cubic),
           useNativeDriver: true,
@@ -173,7 +194,8 @@ export function SurahPicker({
         if (finished) setMounted(false);
       });
     }
-  }, [open, height, width, slide, dragY, fade, stepX, initialStep, currentSurah, currentAyah, mounted]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Animate horizontal step transitions.
   useEffect(() => {
