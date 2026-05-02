@@ -295,6 +295,14 @@ export function CustomBackgroundEditor({
   const pickImage = useCallback(async () => {
     setPicking(true);
     try {
+      if (Platform.OS !== "web") {
+        const { status } =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          setPicking(false);
+          return;
+        }
+      }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"] as unknown as ImagePicker.MediaTypeOptions,
         allowsEditing: false,
@@ -334,6 +342,14 @@ export function CustomBackgroundEditor({
   const pickVideo = useCallback(async () => {
     setPicking(true);
     try {
+      if (Platform.OS !== "web") {
+        const { status } =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          setPicking(false);
+          return;
+        }
+      }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["videos"] as unknown as ImagePicker.MediaTypeOptions,
         allowsEditing: false,
@@ -379,11 +395,16 @@ export function CustomBackgroundEditor({
     <Modal
       visible={open}
       animationType="slide"
-      presentationStyle="fullScreen"
+      presentationStyle={Platform.OS === "ios" ? "pageSheet" : "fullScreen"}
       onRequestClose={onClose}
-      statusBarTranslucent
+      statusBarTranslucent={Platform.OS === "android"}
     >
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View
+        style={[
+          styles.container,
+          { paddingTop: Platform.OS === "ios" ? 0 : insets.top },
+        ]}
+      >
         {/* ── Navigation bar ─────────────────────────────────────────── */}
         <View style={styles.navBar}>
           <TouchableOpacity

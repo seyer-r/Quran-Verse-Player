@@ -1759,7 +1759,10 @@ export default function PlayerScreen() {
         customBackground={settings.customBackground}
         onOpenCustomBgEditor={() => {
           setSettingsOpen(false);
-          setCustomBgEditorOpen(true);
+          // Wait for the settings sheet close animation to finish before
+          // opening the fullscreen modal — simultaneous animations freeze
+          // the JS thread on native (iOS/Expo Go).
+          setTimeout(() => setCustomBgEditorOpen(true), 380);
         }}
       />
 
