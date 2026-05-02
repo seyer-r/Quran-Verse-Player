@@ -48,6 +48,8 @@ import {
   type Ayah,
   type Surah,
 } from "@/data/quran";
+import type { Bookmark } from "@/lib/useBookmarks";
+
 interface SurahPickerProps {
   open: boolean;
   onClose: () => void;
@@ -63,6 +65,10 @@ interface SurahPickerProps {
   initialStep?: Step;
   /** Surah numbers in most-recent-first order. */
   recentSurahs?: number[];
+  /** Saved bookmarks — shown above Recently Played in the surah list. */
+  bookmarks?: Bookmark[];
+  /** Called when the user taps a bookmark card — jumps directly without the wheel. */
+  onSelectBookmark?: (surah: number, ayah: number) => void;
 }
 
 type Step = "surah" | "ayah";
@@ -79,6 +85,8 @@ export function SurahPicker({
   onSelect,
   initialStep = "surah",
   recentSurahs = [],
+  bookmarks = [],
+  onSelectBookmark,
 }: SurahPickerProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -248,6 +256,8 @@ export function SurahPicker({
                   onSelectSurah={handleSurahTap}
                   bottomInset={bottomInset}
                   recentSurahs={recentSurahs}
+                  bookmarks={bookmarks}
+                  onSelectBookmark={onSelectBookmark}
                 />
               </View>
               <View style={[styles.panel, { width }]}>
@@ -282,6 +292,8 @@ interface SurahListPanelProps {
   onSelectSurah: (s: Surah) => void;
   bottomInset: number;
   recentSurahs: number[];
+  bookmarks?: Bookmark[];
+  onSelectBookmark?: (surah: number, ayah: number) => void;
 }
 
 function SurahListPanel({
@@ -292,6 +304,8 @@ function SurahListPanel({
   onSelectSurah,
   bottomInset,
   recentSurahs,
+  bookmarks = [],
+  onSelectBookmark,
 }: SurahListPanelProps) {
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -413,13 +427,22 @@ function SurahListPanel({
           paddingBottom: bottomInset + 24,
         }}
         ListHeaderComponent={
-          !query && recentSurahs.length > 0 ? (
+          !query && (bookmarks.length > 0 || recentSurahs.length > 0) ? (
             <View onLayout={(e) => { headerHeightRef.current = e.nativeEvent.layout.height; }}>
-              <RecentSurahsSection
-                recentSurahs={recentSurahs}
-                currentSurah={currentSurah}
-                onSelectSurah={onSelectSurah}
-              />
+              {bookmarks.length > 0 && (
+                <BookmarksSection
+                  bookmarks={bookmarks}
+                  currentSurah={currentSurah}
+                  onSelect={onSelectBookmark}
+                />
+              )}
+              {recentSurahs.length > 0 && (
+                <RecentSurahsSection
+                  recentSurahs={recentSurahs}
+                  currentSurah={currentSurah}
+                  onSelectSurah={onSelectSurah}
+                />
+              )}
             </View>
           ) : null
         }
@@ -434,6 +457,61 @@ function SurahListPanel({
           />
         )}
       />
+    </View>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Bookmarks section                                                          */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+interface BookmarksSectionProps {
+  bookmarks: Bookmark[];
+  currentSurah: number;
+  onSelect?: (surah: number, ayah: number) => void;
+}
+
+function BookmarksSection({ bookmarks, currentSurah, onSelect }: BookmarksSectionProps) {
+  if (bookmarks.length === 0) return null;
+
+  return (
+    <View style={styles.recentSection}>
+      <Text style={styles.recentHeader}>Bookmarks</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.recentScroll}
+        keyboardShouldPersistTaps="handled"
+      >
+        {bookmarks.map((bm) => {
+          let surahData: Surah | null = null;
+          try { surahData = getSurah(bm.surah); } catch { return null; }
+          if (!surahData) return null;
+          const ayah = surahData.ayahs[bm.ayah - 1];
+          if (!ayah) return null;
+          const isCurrent = bm.surah === currentSurah;
+          return (
+            <TouchableOpacity
+              key={`${bm.surah}-${bm.ayah}`}
+              onPress={() => onSelect?.(bm.surah, bm.ayah)}
+              activeOpacity={0.65}
+              style={[styles.bmCard, isCurrent && styles.bmCardCurrent]}
+              accessibilityLabel={`Bookmark: ${surahData.nameLatin}, Ayah ${bm.ayah}`}
+            >
+              <Text style={[styles.bmSurah, isCurrent && styles.bmSurahCurrent]} numberOfLines={1}>
+                {surahData.nameLatin}
+              </Text>
+              <Text style={[styles.bmAyahNum, isCurrent && styles.bmAyahNumCurrent]}>
+                Ayah {bm.ayah}
+              </Text>
+              <Text style={styles.bmArabicSnippet} numberOfLines={1}>
+                {ayah.arabic.slice(0, 22)}…
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+      <View style={styles.recentDivider} />
     </View>
   );
 }
@@ -993,6 +1071,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#636366",
   },
+  // Bookmark cards
+  bmCard: {
+    width: 128,
+    paddingVertical: 11,
+    paddingHorizontal: 13,
+    borderRadius: 12,
+    backgroundColor: "rgba(232,192,120,0.07)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(232,192,120,0.15)",
+  },
+  bmCardCurrent: {
+    backgroundColor: "rgba(232,192,120,0.14)",
+    borderColor: "rgba(232,192,120,0.35)",
+  },
+  bmSurah: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#8e8e93",
+    marginBottom: 3,
+    letterSpacing: 0.1,
+  },
+  bmSurahCurrent: {
+    color: "#e8c078",
+  },
+  bmAyahNum: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#e5e5e5",
+    marginBottom: 5,
+    letterSpacing: -0.1,
+  },
+  bmAyahNumCurrent: {
+    color: "#f5f5f5",
+  },
+  bmArabicSnippet: {
+    fontSize: 13,
+    color: "#636366",
+    textAlign: "right",
+    writingDirection: "rtl",
+    fontFamily: "UthmanicHafs",
+  },
+
   recentDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(255,255,255,0.07)",

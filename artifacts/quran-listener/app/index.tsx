@@ -55,6 +55,7 @@ import {
   type PlaybackSpeed,
 } from "@/lib/useSettings";
 import { useRecentSurahs } from "@/lib/useRecentSurahs";
+import { useBookmarks } from "@/lib/useBookmarks";
 
 // For surahs longer than this, the per-ayah segmented progress row would
 // shrink to invisible hairlines. Switch to a single overall progress bar
@@ -89,6 +90,7 @@ export default function PlayerScreen() {
   } = useSettings();
   const arabicFontFamily = getArabicFont("uthmani").family;
   const { recentSurahs, recordSurah } = useRecentSurahs();
+  const { bookmarks, isBookmarked, toggleBookmark } = useBookmarks();
 
   // Dev-only structural validation of the bundled Quran corpus. Surfaces
   // any drift loudly in the console instead of corrupting the UI silently.
@@ -1632,6 +1634,10 @@ export default function PlayerScreen() {
         onSelect={handlePickPosition}
         initialStep={pickerInitialStep}
         recentSurahs={recentSurahs}
+        bookmarks={bookmarks}
+        onSelectBookmark={(s, a) => {
+          handlePickPosition(s, a);
+        }}
       />
 
       <ReciterSheet
@@ -1694,6 +1700,43 @@ export default function PlayerScreen() {
               ]}
               onPress={() => {}}
             >
+              {/* Bookmark */}
+              <TouchableOpacity
+                style={styles.ctxRow}
+                activeOpacity={0.5}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  toggleBookmark(surah.number, ayahs[index].number);
+                  setVerseMenuVisible(false);
+                }}
+              >
+                <Text style={styles.ctxRowLabel}>
+                  {isBookmarked(surah.number, ayahs[index].number)
+                    ? "Remove Bookmark"
+                    : "Bookmark"}
+                </Text>
+                <SymbolIcon
+                  name={
+                    isBookmarked(surah.number, ayahs[index].number)
+                      ? "bookmark.fill"
+                      : "bookmark"
+                  }
+                  fallbackIonicon={
+                    isBookmarked(surah.number, ayahs[index].number)
+                      ? "bookmark"
+                      : "bookmark-outline"
+                  }
+                  size={18}
+                  color={
+                    isBookmarked(surah.number, ayahs[index].number)
+                      ? "#e8c078"
+                      : "rgba(235,235,245,0.6)"
+                  }
+                />
+              </TouchableOpacity>
+
+              <View style={styles.ctxSep} />
+
               {/* Repeat Ayah */}
               <TouchableOpacity
                 style={styles.ctxRow}
