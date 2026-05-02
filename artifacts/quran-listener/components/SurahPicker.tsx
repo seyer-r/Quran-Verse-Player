@@ -31,6 +31,7 @@ import {
   PanResponder,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -47,7 +48,6 @@ import {
   type Ayah,
   type Surah,
 } from "@/data/quran";
-
 interface SurahPickerProps {
   open: boolean;
   onClose: () => void;
@@ -61,6 +61,8 @@ interface SurahPickerProps {
    * surah — used when the user taps the AYAH counter.
    */
   initialStep?: Step;
+  /** Surah numbers in most-recent-first order. */
+  recentSurahs?: number[];
 }
 
 type Step = "surah" | "ayah";
@@ -76,6 +78,7 @@ export function SurahPicker({
   currentAyah,
   onSelect,
   initialStep = "surah",
+  recentSurahs = [],
 }: SurahPickerProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -244,6 +247,7 @@ export function SurahPicker({
                   onClose={onClose}
                   onSelectSurah={handleSurahTap}
                   bottomInset={bottomInset}
+                  recentSurahs={recentSurahs}
                 />
               </View>
               <View style={[styles.panel, { width }]}>
@@ -277,6 +281,7 @@ interface SurahListPanelProps {
   onClose: () => void;
   onSelectSurah: (s: Surah) => void;
   bottomInset: number;
+  recentSurahs: number[];
 }
 
 function SurahListPanel({
@@ -286,6 +291,7 @@ function SurahListPanel({
   onClose,
   onSelectSurah,
   bottomInset,
+  recentSurahs,
 }: SurahListPanelProps) {
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -307,26 +313,25 @@ function SurahListPanel({
 
   // Anchor the initial scroll on the currently-playing surah so the user lands
   // near where they are (no need to scroll through 100+ rows to find it).
+  // We use scrollToOffset instead of scrollToIndex so the variable-height
+  // ListHeaderComponent doesn't throw off the calculation.
   const listRef = useRef<FlatList<Surah>>(null);
+  const headerHeightRef = useRef(0);
   useEffect(() => {
     if (!query) {
       const idx = surahs.findIndex((s) => s.number === currentSurah);
       if (idx > 4) {
-        // Defer to next frame — the FlatList isn't laid out on first render.
         requestAnimationFrame(() => {
           try {
-            listRef.current?.scrollToIndex({
-              index: idx,
-              animated: false,
-              viewPosition: 0.3,
-            });
+            const offset = headerHeightRef.current + idx * SURAH_ROW_HEIGHT;
+            listRef.current?.scrollToOffset({ offset, animated: false });
           } catch {
             // ignore — list may not be ready yet
           }
         });
       }
     }
-  }, [currentSurah, query]);
+  }, [currentSurah, query, recentSurahs.length]);
 
   return (
     <View style={styles.panelInner}>
@@ -403,15 +408,21 @@ function SurahListPanel({
         keyboardShouldPersistTaps="handled"
         initialNumToRender={16}
         windowSize={11}
-        getItemLayout={(_, index) => ({
-          length: SURAH_ROW_HEIGHT,
-          offset: SURAH_ROW_HEIGHT * index,
-          index,
-        })}
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingBottom: bottomInset + 24,
         }}
+        ListHeaderComponent={
+          !query && recentSurahs.length > 0 ? (
+            <View onLayout={(e) => { headerHeightRef.current = e.nativeEvent.layout.height; }}>
+              <RecentSurahsSection
+                recentSurahs={recentSurahs}
+                currentSurah={currentSurah}
+                onSelectSurah={onSelectSurah}
+              />
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           <Text style={styles.emptyText}>No surah matches "{query}"</Text>
         }
@@ -423,6 +434,69 @@ function SurahListPanel({
           />
         )}
       />
+    </View>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Recently Played section                                                    */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+interface RecentSurahsSectionProps {
+  recentSurahs: number[];
+  currentSurah: number;
+  onSelectSurah: (s: Surah) => void;
+}
+
+function RecentSurahsSection({
+  recentSurahs,
+  currentSurah,
+  onSelectSurah,
+}: RecentSurahsSectionProps) {
+  const items = recentSurahs
+    .map((n) => { try { return getSurah(n); } catch { return null; } })
+    .filter((s): s is Surah => s !== null);
+
+  if (items.length === 0) return null;
+
+  return (
+    <View style={styles.recentSection}>
+      <Text style={styles.recentHeader}>Recently Played</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.recentScroll}
+        keyboardShouldPersistTaps="handled"
+      >
+        {items.map((surah) => {
+          const isCurrent = surah.number === currentSurah;
+          return (
+            <TouchableOpacity
+              key={surah.number}
+              onPress={() => onSelectSurah(surah)}
+              activeOpacity={0.65}
+              style={[styles.recentCard, isCurrent && styles.recentCardCurrent]}
+              accessibilityLabel={`${surah.nameLatin}, recently played`}
+            >
+              <Text
+                style={[styles.recentNumber, isCurrent && styles.recentNumberCurrent]}
+              >
+                {surah.number}
+              </Text>
+              <Text
+                style={[styles.recentName, isCurrent && styles.recentNameCurrent]}
+                numberOfLines={1}
+              >
+                {surah.nameLatin}
+              </Text>
+              <Text style={styles.recentMeta} numberOfLines={1}>
+                {surah.ayahCount} ayahs
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+      <View style={styles.recentDivider} />
     </View>
   );
 }
@@ -864,6 +938,67 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: 32,
     fontSize: 14,
+  },
+
+  // Recently played section
+  recentSection: {
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  recentHeader: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#8e8e93",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    marginBottom: 10,
+    paddingHorizontal: 8,
+  },
+  recentScroll: {
+    paddingHorizontal: 4,
+    gap: 8,
+    paddingBottom: 4,
+  },
+  recentCard: {
+    width: 112,
+    paddingVertical: 11,
+    paddingHorizontal: 13,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.055)",
+  },
+  recentCardCurrent: {
+    backgroundColor: "rgba(232,192,120,0.1)",
+  },
+  recentNumber: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#636366",
+    fontVariant: ["tabular-nums"],
+    marginBottom: 5,
+  },
+  recentNumberCurrent: {
+    color: "#e8c078",
+  },
+  recentName: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#e5e5e5",
+    letterSpacing: -0.1,
+  },
+  recentNameCurrent: {
+    color: "#f5f5f5",
+  },
+  recentMeta: {
+    marginTop: 3,
+    fontSize: 12,
+    color: "#636366",
+  },
+  recentDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    marginTop: 16,
+    marginBottom: 4,
+    marginHorizontal: 8,
   },
 
   // Surah row (list panel)

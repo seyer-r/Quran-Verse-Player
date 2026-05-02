@@ -51,6 +51,7 @@ import {
   PLAYBACK_SPEEDS,
   type PlaybackSpeed,
 } from "@/lib/useSettings";
+import { useRecentSurahs } from "@/lib/useRecentSurahs";
 
 // For surahs longer than this, the per-ayah segmented progress row would
 // shrink to invisible hairlines. Switch to a single overall progress bar
@@ -83,6 +84,7 @@ export default function PlayerScreen() {
     setAyah: persistAyah,
   } = useSettings();
   const arabicFontFamily = getArabicFont("uthmani").family;
+  const { recentSurahs, recordSurah } = useRecentSurahs();
 
   // Dev-only structural validation of the bundled Quran corpus. Surfaces
   // any drift loudly in the console instead of corrupting the UI silently.
@@ -156,6 +158,10 @@ export default function PlayerScreen() {
   // which is set up once per (surah, index) and otherwise wouldn't see
   // settings changes between attaches.
   const autoplayNextSurahRef = useRef(settings.autoplayNextSurah);
+  // Stable ref to recordSurah so the audio effect closure can call it without
+  // being re-run every time recentSurahs changes.
+  const recordSurahRef = useRef(recordSurah);
+  recordSurahRef.current = recordSurah;
   // Set to true (meaning "was playing") when the user switches reciter while
   // audio is playing, so the audio effect knows to auto-resume on the new player.
   const reciterChangedRef = useRef(false);
@@ -551,6 +557,7 @@ export default function PlayerScreen() {
           setIndex(0);
           setDisplayedIndex(0);
           setPosition(surah.number + 1, 1);
+          recordSurahRef.current(surah.number + 1);
         } else {
           setIsPlaying(false);
           setHasFinished(true);
@@ -1078,9 +1085,10 @@ export default function PlayerScreen() {
         setIsLoading(true);
       }
       setPosition(surahNumber, ayahNumber);
+      recordSurah(surahNumber);
       setPickerOpen(false);
     },
-    [bundle, surah.number, setPosition, getPlayer],
+    [bundle, surah.number, setPosition, getPlayer, recordSurah],
   );
 
   // Responsive Arabic font size — Mushaf-quality on short ayahs, but
@@ -1505,6 +1513,7 @@ export default function PlayerScreen() {
         currentAyah={index + 1}
         onSelect={handlePickPosition}
         initialStep={pickerInitialStep}
+        recentSurahs={recentSurahs}
       />
 
       <ReciterSheet
