@@ -82,42 +82,42 @@ export const BACKGROUND_OPTIONS: BackgroundOption[] = [
   },
 
   // ── Live video backgrounds ──────────────────────────────────────────────
-  // All sourced from Mixkit (free stock video CDN, no attribution required).
-  // Short loops, streamed on demand — zero impact on app bundle size.
+  // Streamed from Pexels CDN (access-control-allow-origin: * confirmed).
+  // URLs verified working — zero impact on app bundle size.
   {
     id: "rain",
     label: "Rain",
     source: null,
     videoUrl:
-      "https://assets.mixkit.co/videos/preview/mixkit-rain-falling-on-the-surface-of-a-lake-18312-large.mp4",
+      "https://videos.pexels.com/video-files/5542020/5542020-hd_1920_1080_24fps.mp4",
   },
   {
     id: "waves",
     label: "Waves",
     source: null,
     videoUrl:
-      "https://assets.mixkit.co/videos/preview/mixkit-ocean-waves-hitting-the-beach-shore-1024-large.mp4",
+      "https://videos.pexels.com/video-files/1093652/1093652-hd_1920_1080_30fps.mp4",
   },
   {
     id: "dunes",
     label: "Dunes",
     source: null,
     videoUrl:
-      "https://assets.mixkit.co/videos/preview/mixkit-sand-dunes-with-dry-wind-4808-large.mp4",
+      "https://videos.pexels.com/video-files/5019566/5019566-hd_1920_1080_30fps.mp4",
   },
   {
     id: "embers",
     label: "Embers",
     source: null,
     videoUrl:
-      "https://assets.mixkit.co/videos/preview/mixkit-campfire-at-night-in-the-forest-24601-large.mp4",
+      "https://videos.pexels.com/video-files/6985210/6985210-hd_1920_1080_25fps.mp4",
   },
   {
     id: "galaxy",
     label: "Galaxy",
     source: null,
     videoUrl:
-      "https://assets.mixkit.co/videos/preview/mixkit-stars-in-night-sky-1167-large.mp4",
+      "https://videos.pexels.com/video-files/3130284/3130284-hd_1920_1080_30fps.mp4",
   },
 ];
 
