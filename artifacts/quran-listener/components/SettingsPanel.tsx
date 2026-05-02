@@ -31,7 +31,6 @@ import {
   type TransitionMode,
 } from "@/lib/transitions";
 import { RECITERS, type ReciterId } from "@/data/reciters";
-import { PLAYBACK_SPEEDS, type PlaybackSpeed } from "@/lib/useSettings";
 
 const AMBIENT_IONICONS: Record<AmbientId, keyof typeof Ionicons.glyphMap> = {
   off: "ban",
@@ -58,8 +57,6 @@ interface SettingsPanelProps {
   onAmbientChange: (id: AmbientId) => void;
   onAmbientVolumeChange: (vol: number) => void;
   onReciterChange: (id: ReciterId) => void;
-  playbackSpeed: PlaybackSpeed;
-  onPlaybackSpeedChange: (speed: PlaybackSpeed) => void;
   onAutoplayNextSurahChange: (next: boolean) => void;
   onBackgroundDimChange: (next: boolean) => void;
   onSleepTimerChange: (minutes: number | null) => void;
@@ -88,8 +85,6 @@ export function SettingsPanel({
   autoplayNextSurah,
   backgroundDim,
   sleepTimerMinutes,
-  playbackSpeed,
-  onPlaybackSpeedChange,
   onTransitionChange,
   onBackgroundChange,
   onAmbientChange,
@@ -496,37 +491,6 @@ export function SettingsPanel({
                 </View>
               </View>
             </View>
-
-            {/* === PLAYBACK SPEED === */}
-            <View style={[styles.speedPillContainer, { marginTop: 14 }]}>
-              {(PLAYBACK_SPEEDS as readonly number[]).map((s) => {
-                const selected = s === playbackSpeed;
-                const label = `${s}×`;
-                return (
-                  <TouchableOpacity
-                    key={s}
-                    onPress={() => onPlaybackSpeedChange(s as PlaybackSpeed)}
-                    activeOpacity={0.7}
-                    style={[
-                      styles.speedPill,
-                      selected && styles.speedPillSelected,
-                    ]}
-                    accessibilityLabel={`${s}x playback speed`}
-                    accessibilityState={{ selected }}
-                  >
-                    <Text
-                      style={[
-                        styles.speedPillText,
-                        selected && styles.speedPillTextSelected,
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <Text style={styles.sleepHint}>Playback speed</Text>
 
             {/* === SLEEP TIMER === */}
             <SectionHeader title="Sleep timer" style={{ marginTop: 28 }} />

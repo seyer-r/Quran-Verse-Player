@@ -1,5 +1,6 @@
 import { SymbolIcon } from "@/components/SymbolIcon";
 import { RECITERS, type ReciterId } from "@/data/reciters";
+import { PLAYBACK_SPEEDS, type PlaybackSpeed } from "@/lib/useSettings";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -19,6 +20,8 @@ interface ReciterSheetProps {
   onClose: () => void;
   reciterId: ReciterId;
   onReciterChange: (id: ReciterId) => void;
+  playbackSpeed: PlaybackSpeed;
+  onPlaybackSpeedChange: (speed: PlaybackSpeed) => void;
 }
 
 const ANIM_MS = 280;
@@ -28,6 +31,8 @@ export function ReciterSheet({
   onClose,
   reciterId,
   onReciterChange,
+  playbackSpeed,
+  onPlaybackSpeedChange,
 }: ReciterSheetProps) {
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(open);
@@ -174,6 +179,28 @@ export function ReciterSheet({
                       />
                     )}
                   </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* ── Playback Speed ── */}
+          <Text style={styles.speedLabel}>Playback Speed</Text>
+          <View style={styles.speedRow}>
+            {(PLAYBACK_SPEEDS as readonly number[]).map((s) => {
+              const sel = s === playbackSpeed;
+              return (
+                <TouchableOpacity
+                  key={s}
+                  onPress={() => onPlaybackSpeedChange(s as PlaybackSpeed)}
+                  activeOpacity={0.7}
+                  style={[styles.speedPill, sel && styles.speedPillSelected]}
+                  accessibilityLabel={`${s}× speed`}
+                  accessibilityState={{ selected: sel }}
+                >
+                  <Text style={[styles.speedPillText, sel && styles.speedPillTextSel]}>
+                    {s}×
+                  </Text>
                 </TouchableOpacity>
               );
             })}

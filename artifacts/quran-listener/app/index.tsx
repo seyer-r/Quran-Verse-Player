@@ -293,6 +293,13 @@ export default function PlayerScreen() {
     };
   }, []);
 
+  // Keep a ref to the current speed so getPlayer can read it without taking
+  // settings.playbackSpeed as a dependency. If playbackSpeed were in getPlayer's
+  // deps, every speed change would rebuild getPlayer → re-run the audio
+  // listener effect → disrupt playback mid-ayah.
+  const playbackSpeedRef = useRef<PlaybackSpeed>(settings.playbackSpeed);
+  playbackSpeedRef.current = settings.playbackSpeed;
+
   const getPlayer = useCallback(
     (i: number): AudioPlayer => {
       let p = bundle.players[i];
@@ -303,17 +310,22 @@ export default function PlayerScreen() {
             getReciter(settings.reciterId).cdnIdentifier,
           ),
         });
-        // Apply the persisted playback rate immediately so the player
-        // is ready at the right speed the moment audio starts.
+        // Apply the current playback rate immediately via ref so the player
+        // is ready at the right speed the moment audio starts — without
+        // making getPlayer depend on settings.playbackSpeed.
         try {
-          p.rate = settings.playbackSpeed;
+          p.rate = playbackSpeedRef.current;
           p.shouldCorrectPitch = true;
         } catch {}
         bundle.players[i] = p;
       }
       return p;
     },
-    [bundle, ayahs, settings.reciterId, settings.playbackSpeed],
+    // playbackSpeedRef is intentionally omitted — it's a ref (stable object),
+    // and we read .current at call time. Only bundle/ayahs/reciterId should
+    // trigger a new getPlayer reference.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bundle, ayahs, settings.reciterId],
   );
 
   const safePlay = (p: AudioPlayer | null | undefined) => {
@@ -858,16 +870,6 @@ export default function PlayerScreen() {
     [setReciter],
   );
 
-  // Cycle through speeds on each tap — Apple Podcasts / Apple Books pattern.
-  // Wraps from 2× back to 0.5×, skipping no steps.
-  const cycleSpeed = useCallback(() => {
-    pokeControls();
-    const idx = (PLAYBACK_SPEEDS as readonly number[]).indexOf(
-      settings.playbackSpeed,
-    );
-    const next = PLAYBACK_SPEEDS[(idx + 1) % PLAYBACK_SPEEDS.length];
-    setPlaybackSpeed(next);
-  }, [settings.playbackSpeed, setPlaybackSpeed, pokeControls]);
 
   // Wrap the ambient setters so that picking a sound (or nudging the volume)
   // counts as the user gesture that unlocks web audio AND triggers playback
