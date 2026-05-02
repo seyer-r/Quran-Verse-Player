@@ -24,6 +24,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -1735,6 +1736,36 @@ export default function PlayerScreen() {
               >
                 <Text style={styles.ctxRowLabel}>Copy Arabic</Text>
                 <Text style={styles.ctxRowIcon}>⎘</Text>
+              </TouchableOpacity>
+
+              <View style={styles.ctxSep} />
+
+              {/* Share Ayah */}
+              <TouchableOpacity
+                style={styles.ctxRow}
+                activeOpacity={0.5}
+                onPress={async () => {
+                  const ayah = ayahs[index];
+                  const shareText = `${ayah.arabic}\n\n${ayah.translation}\n\n— ${surah.nameLatin}, Ayah ${ayah.number}`;
+                  setVerseMenuVisible(false);
+                  try {
+                    if (
+                      Platform.OS === "web" &&
+                      typeof navigator !== "undefined" &&
+                      typeof (navigator as unknown as { share?: unknown }).share === "function"
+                    ) {
+                      await (navigator as unknown as { share: (data: { text: string }) => Promise<void> }).share({ text: shareText });
+                    } else {
+                      await Share.share({ message: shareText });
+                    }
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  } catch {
+                    // User cancelled or share not supported — silently ignore
+                  }
+                }}
+              >
+                <Text style={styles.ctxRowLabel}>Share Ayah</Text>
+                <Text style={styles.ctxRowIcon}>↗</Text>
               </TouchableOpacity>
             </Pressable>
           </Animated.View>
