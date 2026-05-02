@@ -131,6 +131,7 @@ export default function PlayerScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reciterSheetOpen, setReciterSheetOpen] = useState(false);
   const [verseMenuVisible, setVerseMenuVisible] = useState(false);
+  const menuScale = useRef(new Animated.Value(0.88)).current;
   const [pickerInitialStep, setPickerInitialStep] = useState<
     "surah" | "ayah"
   >("surah");
@@ -193,6 +194,18 @@ export default function PlayerScreen() {
   useEffect(() => {
     repeatAyahRef.current = settings.repeatAyah;
   }, [settings.repeatAyah]);
+  useEffect(() => {
+    if (verseMenuVisible) {
+      menuScale.setValue(0.88);
+      Animated.spring(menuScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        damping: 20,
+        stiffness: 300,
+        mass: 0.8,
+      }).start();
+    }
+  }, [verseMenuVisible, menuScale]);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimer.current) {
@@ -1626,86 +1639,102 @@ export default function PlayerScreen() {
         onPlaybackSpeedChange={setPlaybackSpeed}
       />
 
-      {/* ── Verse context menu (long-press) ───────────────────────────────── */}
+      {/* ── Verse context menu (long-press) — Apple UIContextMenu style ─── */}
       <Modal
         visible={verseMenuVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setVerseMenuVisible(false)}
+        statusBarTranslucent
       >
+        {/* Full-screen dim + blur overlay — tap outside to dismiss */}
         <Pressable
-          style={styles.verseMenuOverlay}
+          style={[
+            styles.ctxOverlay,
+            Platform.OS === "web"
+              ? ({ backdropFilter: "blur(20px)" } as object)
+              : {},
+          ]}
           onPress={() => setVerseMenuVisible(false)}
         >
-          {/* Stop tap inside the card from closing the overlay */}
-          <Pressable style={styles.verseMenuCard} onPress={() => {}}>
-            {/* Apple-style content preview */}
-            <View style={styles.verseMenuPreview}>
-              <Text style={styles.verseMenuPreviewArabic} numberOfLines={2}>
+          {/* Spring-animated container — stops taps propagating to overlay */}
+          <Animated.View
+            style={[styles.ctxContainer, { transform: [{ scale: menuScale }] }]}
+          >
+            {/* ① Preview card — verse "lifted" from the page */}
+            <Pressable style={styles.ctxPreview} onPress={() => {}}>
+              <Text
+                style={[
+                  styles.ctxPreviewArabic,
+                  { fontFamily: arabicFontFamily },
+                ]}
+                numberOfLines={3}
+              >
                 {ayahs[index].arabic}
               </Text>
-              <Text style={styles.verseMenuPreviewMeta}>
-                {surah.name} · Ayah {ayahs[index].number}
+              <Text style={styles.ctxPreviewMeta}>
+                {surah.name}{"  ·  "}Ayah {ayahs[index].number}
               </Text>
-            </View>
+            </Pressable>
 
-            <View style={styles.verseMenuDivider} />
+            {/* 8 pt gap between preview and menu — exact Apple spacing */}
+            <View style={{ height: 8 }} />
 
-            {/* Repeat ayah */}
-            <TouchableOpacity
-              style={styles.verseMenuRow}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setRepeatAyah(!settings.repeatAyah);
-                setVerseMenuVisible(false);
-              }}
-              activeOpacity={0.7}
+            {/* ② Menu card — frosted glass panel */}
+            <Pressable
+              style={[
+                styles.ctxMenu,
+                Platform.OS === "web"
+                  ? ({ backdropFilter: "blur(40px)" } as object)
+                  : {},
+              ]}
+              onPress={() => {}}
             >
-              <Text style={[
-                styles.verseMenuRowLabel,
-                settings.repeatAyah && styles.verseMenuRowLabelActive,
-              ]}>
-                {settings.repeatAyah ? "Stop Repeating" : "Repeat Ayah"}
-              </Text>
-              <Text style={[
-                styles.verseMenuRowIcon,
-                settings.repeatAyah && styles.verseMenuRowIconActive,
-              ]}>
-                ↺
-              </Text>
-            </TouchableOpacity>
+              {/* Repeat Ayah */}
+              <TouchableOpacity
+                style={styles.ctxRow}
+                activeOpacity={0.5}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setRepeatAyah(!settings.repeatAyah);
+                  setVerseMenuVisible(false);
+                }}
+              >
+                <Text style={styles.ctxRowLabel}>
+                  {settings.repeatAyah ? "Stop Repeating" : "Repeat Ayah"}
+                </Text>
+                <Text style={styles.ctxRowIcon}>
+                  {settings.repeatAyah ? "✓" : "↺"}
+                </Text>
+              </TouchableOpacity>
 
-            <View style={styles.verseMenuDivider} />
+              <View style={styles.ctxSep} />
 
-            {/* Copy Arabic */}
-            <TouchableOpacity
-              style={styles.verseMenuRow}
-              onPress={() => {
-                if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
-                  navigator.clipboard.writeText(ayahs[index].arabic).catch(() => {});
-                }
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                setVerseMenuVisible(false);
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.verseMenuRowLabel}>Copy Arabic</Text>
-              <Text style={styles.verseMenuRowIcon}>⎘</Text>
-            </TouchableOpacity>
-
-            <View style={styles.verseMenuDivider} />
-
-            {/* Cancel */}
-            <TouchableOpacity
-              style={[styles.verseMenuRow, { justifyContent: "center" }]}
-              onPress={() => setVerseMenuVisible(false)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.verseMenuRowLabel, { color: "#8e8e93" }]}>
-                Dismiss
-              </Text>
-            </TouchableOpacity>
-          </Pressable>
+              {/* Copy Arabic */}
+              <TouchableOpacity
+                style={styles.ctxRow}
+                activeOpacity={0.5}
+                onPress={() => {
+                  if (
+                    Platform.OS === "web" &&
+                    typeof navigator !== "undefined" &&
+                    navigator.clipboard
+                  ) {
+                    navigator.clipboard
+                      .writeText(ayahs[index].arabic)
+                      .catch(() => {});
+                  }
+                  Haptics.notificationAsync(
+                    Haptics.NotificationFeedbackType.Success,
+                  );
+                  setVerseMenuVisible(false);
+                }}
+              >
+                <Text style={styles.ctxRowLabel}>Copy Arabic</Text>
+                <Text style={styles.ctxRowIcon}>⎘</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Animated.View>
         </Pressable>
       </Modal>
     </View>
@@ -1924,58 +1953,78 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     justifyContent: "center",
   },
-  verseMenuOverlay: {
+  // ── Apple UIContextMenu styles ─────────────────────────────────────────────
+  // Overlay: full-screen dim. On web we add backdropFilter via inline style.
+  ctxOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.65)",
+    backgroundColor: "rgba(0,0,0,0.50)",
     alignItems: "center",
     justifyContent: "center",
   },
-  verseMenuCard: {
-    width: 300,
-    backgroundColor: "#1c1c1e",
-    borderRadius: 16,
-    overflow: "hidden",
+  // Container: fixed width, spring-animated
+  ctxContainer: {
+    width: 320,
   },
-  verseMenuPreview: {
-    padding: 16,
+  // ① Preview card: the verse "lifted" from the page
+  ctxPreview: {
+    backgroundColor: "rgba(18,18,18,0.98)",
+    borderRadius: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
     alignItems: "center",
-    gap: 6,
+    gap: 8,
+    // Elevation / shadow
+    shadowColor: "#000",
+    shadowOpacity: 0.55,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 24,
   },
-  verseMenuPreviewArabic: {
+  ctxPreviewArabic: {
     color: "#ffffff",
-    fontSize: 22,
+    fontSize: 24,
     textAlign: "center",
-    lineHeight: 38,
+    lineHeight: 42,
     writingDirection: "rtl",
   },
-  verseMenuPreviewMeta: {
-    color: "#8e8e93",
+  ctxPreviewMeta: {
+    color: "rgba(235,235,245,0.6)",
     fontSize: 12,
+    letterSpacing: 0.2,
   },
-  verseMenuDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "#3a3a3c",
-    marginHorizontal: 0,
+  // ② Menu card: frosted glass. On web we add backdropFilter via inline style.
+  ctxMenu: {
+    backgroundColor: "rgba(44,44,46,0.92)",
+    borderRadius: 14,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.45,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 16,
   },
-  verseMenuRow: {
+  // Each action row — 44 pt tall (standard iOS touch target)
+  ctxRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 16,
+    height: 44,
+    paddingHorizontal: 16,
   },
-  verseMenuRowLabel: {
+  ctxRowLabel: {
     color: "#ffffff",
-    fontSize: 16,
+    fontSize: 17,
+    fontWeight: "400",
   },
-  verseMenuRowLabelActive: {
-    color: "#e8c078",
+  ctxRowIcon: {
+    color: "rgba(235,235,245,0.6)",
+    fontSize: 20,
   },
-  verseMenuRowIcon: {
-    color: "#8e8e93",
-    fontSize: 18,
-  },
-  verseMenuRowIconActive: {
-    color: "#e8c078",
+  // Separator: very faint, exactly like iOS
+  ctxSep: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    marginLeft: 16,
   },
   ayahRevealContainer: {
     flex: 1,
