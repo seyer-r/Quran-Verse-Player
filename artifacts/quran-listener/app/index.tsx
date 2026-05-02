@@ -306,6 +306,31 @@ export default function PlayerScreen() {
   const playbackSpeedRef = useRef<PlaybackSpeed>(settings.playbackSpeed);
   playbackSpeedRef.current = settings.playbackSpeed;
 
+  // Apply playback rate to a player cross-platform.
+  // expo-audio's web implementation (AudioPlayerWeb) exposes `playbackRate`
+  // (mirroring HTMLAudioElement.playbackRate) and `setPlaybackRate()`.
+  // It does NOT have a `rate` property — setting `p.rate` is a silent no-op
+  // on web, which is why speed changes appeared to do nothing.
+  // On native, AudioPlayer exposes `rate` and `shouldCorrectPitch`.
+  // We try both paths so this works correctly on every platform.
+  const applyRateToPlayer = (p: AudioPlayer, speed: PlaybackSpeed) => {
+    try {
+      // Web path: AudioPlayerWeb.playbackRate → media.playbackRate
+      if (typeof (p as unknown as { playbackRate?: unknown }).playbackRate === "number" ||
+          typeof (p as unknown as { setPlaybackRate?: unknown }).setPlaybackRate === "function") {
+        (p as unknown as { playbackRate: number }).playbackRate = speed;
+        // Also set preservesPitch via the web API if available
+        const media = (p as unknown as { media?: HTMLAudioElement }).media;
+        if (media) {
+          try { media.preservesPitch = true; } catch {}
+        }
+      }
+      // Native path: AudioPlayer.rate + shouldCorrectPitch
+      (p as unknown as { rate: number }).rate = speed;
+      (p as unknown as { shouldCorrectPitch: boolean }).shouldCorrectPitch = true;
+    } catch {}
+  };
+
   const getPlayer = useCallback(
     (i: number): AudioPlayer => {
       let p = bundle.players[i];
@@ -319,10 +344,7 @@ export default function PlayerScreen() {
         // Apply the current playback rate immediately via ref so the player
         // is ready at the right speed the moment audio starts — without
         // making getPlayer depend on settings.playbackSpeed.
-        try {
-          p.rate = playbackSpeedRef.current;
-          p.shouldCorrectPitch = true;
-        } catch {}
+        applyRateToPlayer(p, playbackSpeedRef.current);
         bundle.players[i] = p;
       }
       return p;
@@ -835,16 +857,17 @@ export default function PlayerScreen() {
     }
   }, [settings.ambientVolume]);
 
-  // When the user changes playback speed, apply the new rate to the
-  // currently-playing recitation player right away. New players are
-  // also initialized to this rate inside getPlayer().
+  // When the user changes playback speed, apply the new rate to ALL existing
+  // players in the current bundle so any pre-buffered players also get the
+  // correct rate. New players are also initialized inside getPlayer().
   useEffect(() => {
-    const p = currentRecitationPlayerRef.current;
-    if (!p) return;
-    try {
-      p.rate = settings.playbackSpeed;
-      p.shouldCorrectPitch = true;
-    } catch {}
+    for (const p of bundle.players) {
+      if (p) applyRateToPlayer(p, settings.playbackSpeed);
+    }
+    // Also cover the current player via ref in case bundle hasn't updated yet.
+    const cur = currentRecitationPlayerRef.current;
+    if (cur) applyRateToPlayer(cur, settings.playbackSpeed);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.playbackSpeed]);
 
   // On web, the FIRST user-driven action is the gesture that unlocks
