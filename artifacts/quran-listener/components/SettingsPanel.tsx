@@ -62,12 +62,12 @@ interface SettingsPanelProps {
   onSleepTimerChange: (minutes: number | null) => void;
 }
 
-const SLEEP_OPTIONS: { label: string; minutes: number | null }[] = [
-  { label: "Off", minutes: null },
-  { label: "10 min", minutes: 10 },
-  { label: "20 min", minutes: 20 },
-  { label: "30 min", minutes: 30 },
-  { label: "1 hour", minutes: 60 },
+const SLEEP_OPTIONS: { label: string; shortLabel: string; minutes: number | null }[] = [
+  { label: "Off", shortLabel: "Off", minutes: null },
+  { label: "10 min", shortLabel: "10m", minutes: 10 },
+  { label: "20 min", shortLabel: "20m", minutes: 20 },
+  { label: "30 min", shortLabel: "30m", minutes: 30 },
+  { label: "1 hour", shortLabel: "1h", minutes: 60 },
 ];
 
 const ANIM_MS = 320;
@@ -248,12 +248,7 @@ export function SettingsPanel({
                     activeOpacity={0.8}
                     style={styles.bgItem}
                   >
-                    <View
-                      style={[
-                        styles.bgSwatch,
-                        selected && styles.bgSwatchSelected,
-                      ]}
-                    >
+                    <View style={styles.bgSwatch}>
                       {bg.source ? (
                         <Image
                           source={bg.source}
@@ -275,6 +270,9 @@ export function SettingsPanel({
                             style={styles.bgNoneIcon}
                           />
                         </View>
+                      )}
+                      {selected && (
+                        <View style={styles.bgSelectedRing} pointerEvents="none" />
                       )}
                       {selected && (
                         <View style={styles.bgCheck}>
@@ -496,38 +494,29 @@ export function SettingsPanel({
 
             {/* === SLEEP TIMER === */}
             <SectionHeader title="Sleep timer" style={{ marginTop: 28 }} />
-            <View style={styles.group}>
-              {SLEEP_OPTIONS.map((opt, i) => {
+            <View style={styles.sleepPillContainer}>
+              {SLEEP_OPTIONS.map((opt) => {
                 const selected = opt.minutes === sleepTimerMinutes;
-                const isLast = i === SLEEP_OPTIONS.length - 1;
                 return (
                   <TouchableOpacity
                     key={opt.label}
                     onPress={() => onSleepTimerChange(opt.minutes)}
-                    activeOpacity={0.6}
-                    style={[styles.row, !isLast && styles.rowDivider]}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.sleepPill,
+                      selected && styles.sleepPillSelected,
+                    ]}
+                    accessibilityLabel={opt.label}
+                    accessibilityState={{ selected }}
                   >
-                    <View style={styles.rowIcon}>
-                      <SymbolIcon
-                        name={opt.minutes == null ? "moon.zzz" : "moon.fill"}
-                        fallbackIonicon={opt.minutes == null ? "ban" : "moon"}
-                        size={18}
-                        color={selected ? "#f5f5f5" : "#737373"}
-                      />
-                    </View>
                     <Text
                       style={[
-                        styles.rowLabel,
-                        selected && styles.rowLabelSelected,
+                        styles.sleepPillText,
+                        selected && styles.sleepPillTextSelected,
                       ]}
                     >
-                      {opt.label}
+                      {opt.shortLabel}
                     </Text>
-                    <View style={styles.rowAccessory}>
-                      {selected && (
-                        <SymbolIcon name="checkmark" fallbackIonicon="checkmark" size={17} color="#e8c078" weight="semibold" />
-                      )}
-                    </View>
                   </TouchableOpacity>
                 );
               })}
@@ -785,13 +774,14 @@ const styles = StyleSheet.create({
     height: 88,
     borderRadius: 12,
     overflow: "hidden",
-    borderWidth: 2,
-    borderColor: "transparent",
     backgroundColor: "#000",
     position: "relative",
   },
-  bgSwatchSelected: {
+  bgSelectedRing: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 2,
     borderColor: "#e8c078",
+    borderRadius: 12,
   },
   bgNoneIcon: {
     position: "absolute",
@@ -858,6 +848,33 @@ const styles = StyleSheet.create({
     backgroundColor: "#e8c078",
   },
 
+  sleepPillContainer: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 14,
+    padding: 5,
+    gap: 4,
+  },
+  sleepPill: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sleepPillSelected: {
+    backgroundColor: "rgba(232,192,120,0.18)",
+  },
+  sleepPillText: {
+    fontSize: 15,
+    color: "#737373",
+    fontWeight: "400",
+    letterSpacing: 0,
+  },
+  sleepPillTextSelected: {
+    color: "#e8c078",
+    fontWeight: "600",
+  },
   sleepHint: {
     marginTop: 10,
     marginLeft: 4,

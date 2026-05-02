@@ -30,6 +30,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ReciterSheet } from "@/components/ReciterSheet";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SurahPicker } from "@/components/SurahPicker";
 import { AMBIENT_OPTIONS, type AmbientId, getAmbient } from "@/data/ambient";
@@ -116,6 +117,7 @@ export default function PlayerScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [reciterSheetOpen, setReciterSheetOpen] = useState(false);
   const [pickerInitialStep, setPickerInitialStep] = useState<
     "surah" | "ayah"
   >("surah");
@@ -1240,12 +1242,32 @@ export default function PlayerScreen() {
           )}
 
           <View style={styles.controlsRow}>
-            <View style={styles.reciterCol}>
-              <Text style={styles.reciterEyebrow}>RECITER</Text>
-              <Text style={styles.reciterName} numberOfLines={1}>
-                {getReciter(settings.reciterId).name}
-              </Text>
-            </View>
+            <TouchableOpacity
+              style={styles.reciterCol}
+              onPress={() => {
+                pokeControls();
+                setReciterSheetOpen(true);
+              }}
+              activeOpacity={0.7}
+              accessibilityLabel={`Reciter: ${getReciter(settings.reciterId).name}. Tap to change.`}
+              hitSlop={6}
+            >
+              <View style={styles.reciterEyebrowRow}>
+                <Text style={styles.reciterEyebrow}>Reciter</Text>
+              </View>
+              <View style={styles.reciterNameRow}>
+                <Text style={styles.reciterName} numberOfLines={1} ellipsizeMode="tail">
+                  {getReciter(settings.reciterId).name}
+                </Text>
+                <SymbolIcon
+                  name="chevron.up"
+                  fallbackIonicon="chevron-up"
+                  size={10}
+                  color="#737373"
+                  style={styles.reciterChevron}
+                />
+              </View>
+            </TouchableOpacity>
 
             <View style={styles.controlsCenter}>
               <TouchableOpacity
@@ -1378,6 +1400,13 @@ export default function PlayerScreen() {
         currentAyah={index + 1}
         onSelect={handlePickPosition}
         initialStep={pickerInitialStep}
+      />
+
+      <ReciterSheet
+        open={reciterSheetOpen}
+        onClose={() => setReciterSheetOpen(false)}
+        reciterId={settings.reciterId}
+        onReciterChange={setReciter}
       />
     </View>
   );
@@ -1552,17 +1581,30 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  reciterEyebrowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   reciterEyebrow: {
     fontSize: 11,
     letterSpacing: 0,
     color: "#8e8e93",
     fontWeight: "400",
   },
-  reciterName: {
+  reciterNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 2,
+    gap: 4,
+  },
+  reciterName: {
     fontSize: 13,
     color: "#d4d4d4",
     fontWeight: "500",
+    flexShrink: 1,
+  },
+  reciterChevron: {
+    flexShrink: 0,
   },
   controlsCenter: {
     flexDirection: "row",
