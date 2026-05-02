@@ -543,8 +543,13 @@ export default function PlayerScreen() {
     // correct player even after a bundle rebuild from a reciter switch.
     currentRecitationPlayerRef.current = player;
     setProgress(0);
-    setIsLoading(true);
     setAudioError(false);
+
+    // If this player is already loaded (pre-buffered by the look-ahead in
+    // a previous effect run), skip the loading spinner entirely. Showing it
+    // unconditionally caused a false "loading" flash on every rapid skip
+    // because pre-buffered players emit their first status immediately.
+    setIsLoading(!player.isLoaded);
 
     // ---------------------------------------------------------------
     // Shared "track finished" logic — used by both the status listener
@@ -593,17 +598,25 @@ export default function PlayerScreen() {
     // onerror handler, so a 4xx/5xx response or network failure never
     // emits a status event. Without this timeout the spinner runs
     // forever. After 12 s we surface the error icon instead.
+    // Only start the timeout if the player isn't already loaded — rapid
+    // skips to pre-buffered players must not arm a fresh 12 s countdown.
     // ---------------------------------------------------------------
-    let loadTimeoutId: ReturnType<typeof setTimeout> | null = setTimeout(
-      () => {
-        loadTimeoutId = null;
-        if (!player.isLoaded) {
-          setIsLoading(false);
-          setAudioError(true);
-        }
-      },
-      12_000,
-    );
+    let loadTimeoutId: ReturnType<typeof setTimeout> | null = player.isLoaded
+      ? null
+      : setTimeout(() => {
+          loadTimeoutId = null;
+          if (!player.isLoaded) {
+            setIsLoading(false);
+            setAudioError(true);
+          }
+        }, 12_000);
+
+    // Stall-recovery flag: set to true on the first loaded event so the
+    // auto-resume below fires at most once per effect mount. This mirrors
+    // AVPlayer's automatic stall recovery — if the skip handlers called
+    // play() before the audio was ready (rejected by the browser), this
+    // retries once the media reports ready-to-play.
+    let hasTriedAutoResume = false;
 
     const sub = player.addListener(
       "playbackStatusUpdate",
@@ -620,6 +633,22 @@ export default function PlayerScreen() {
         }
         setAudioError(false);
         setIsLoading(!!status.isBuffering);
+
+        // Stall recovery: if the user intended to play but the player
+        // isn't running (play() was called before load completed and the
+        // browser rejected/aborted it), resume now that it's ready.
+        // Only fires once per effect mount to avoid looping on hard errors.
+        if (
+          !hasTriedAutoResume &&
+          isPlayingRef.current &&
+          !player.playing &&
+          !status.isBuffering &&
+          !status.didJustFinish
+        ) {
+          hasTriedAutoResume = true;
+          applyRateToPlayer(player, playbackSpeedRef.current);
+          safePlay(player);
+        }
 
         const dur = status.duration ?? 0;
         if (dur > 0) {
@@ -644,16 +673,20 @@ export default function PlayerScreen() {
     //   1. Cross-surah picker jump (shouldAutoPlayRef) — always play.
     //   2. Reciter switch while playing (reciterChangedRef) — resume.
     //   3. Normal ayah skip — the skip handler already called safePlay
-    //      before setIndex, so no action needed here.
+    //      before setIndex, so no action needed here (stall-recovery
+    //      in the status listener handles the case where play() was
+    //      called before the player was ready).
     // ---------------------------------------------------------------
     if (shouldAutoPlayRef.current) {
       shouldAutoPlayRef.current = false;
       safeSeekZero(player);
+      applyRateToPlayer(player, playbackSpeedRef.current);
       safePlay(player);
       setIsPlaying(true);
     } else if (reciterChangedRef.current) {
       reciterChangedRef.current = false;
       safeSeekZero(player);
+      applyRateToPlayer(player, playbackSpeedRef.current);
       safePlay(player);
     }
 
@@ -942,24 +975,44 @@ export default function PlayerScreen() {
         if (p) safeSeekZero(p);
       }
       const first = getPlayer(0);
+      applyRateToPlayer(first, playbackSpeedRef.current);
       safePlay(first);
       setIndex(0);
       setIsPlaying(true);
       setProgress(0);
       return;
     }
-    const player = getPlayer(indexRef.current);
+    const cur = indexRef.current;
+    // If the player is in an error state, tear it down and let getPlayer
+    // rebuild it fresh — same pattern Apple uses when AVPlayer fails:
+    // discard the broken asset, create a new AVPlayerItem, and replay.
+    if (audioError) {
+      const broken = bundle.players[cur];
+      if (broken) {
+        try { broken.remove(); } catch {}
+        bundle.players[cur] = null;
+      }
+      setAudioError(false);
+      setIsLoading(true);
+      // getPlayer now creates a fresh player for this index.
+      const fresh = getPlayer(cur);
+      applyRateToPlayer(fresh, playbackSpeedRef.current);
+      safePlay(fresh);
+      setIsPlaying(true);
+      return;
+    }
+    const player = getPlayer(cur);
     if (player.playing) {
       safePause(player);
       setIsPlaying(false);
     } else {
-      // Clear any previous error so the load-timeout restarts cleanly.
       setAudioError(false);
-      setIsLoading(true);
+      setIsLoading(!player.isLoaded);
+      applyRateToPlayer(player, playbackSpeedRef.current);
       safePlay(player);
       setIsPlaying(true);
     }
-  }, [hasFinished, getPlayer, bundle, pokeControls, grantUserGestureAndStartAmbient]);
+  }, [hasFinished, audioError, getPlayer, bundle, pokeControls, grantUserGestureAndStartAmbient]);
 
   // ------------------------------------------------------------------
   // Skip throttle. Rapid taps on next / previous used to leave the
@@ -975,7 +1028,7 @@ export default function PlayerScreen() {
   //      pre-skip one (otherwise consecutive valid taps would both
   //      compute their target from the original index).
   // ------------------------------------------------------------------
-  const SKIP_COOLDOWN_MS = 220;
+  const SKIP_COOLDOWN_MS = 350;
   const skipLockRef = useRef(false);
   const skipUnlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lockSkip = useCallback(() => {
@@ -1009,6 +1062,7 @@ export default function PlayerScreen() {
       const prev = getPlayer(cur - 1);
       safeSeekZero(prev);
       if (wasPlaying) {
+        applyRateToPlayer(prev, playbackSpeedRef.current);
         safePlay(prev);
         // Keep React state in lockstep with the player we just kicked
         // off — a rapid pause/play sequence on the previous player can
@@ -1041,6 +1095,7 @@ export default function PlayerScreen() {
       const next = getPlayer(cur + 1);
       safeSeekZero(next);
       if (wasPlaying) {
+        applyRateToPlayer(next, playbackSpeedRef.current);
         safePlay(next);
         setIsPlaying(true);
       }
