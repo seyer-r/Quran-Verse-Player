@@ -319,6 +319,9 @@ interface SurahListPanelProps {
   onSelectBookmark?: (surah: number, ayah: number) => void;
 }
 
+// Scroll distance over which the large title fully collapses into the nav bar.
+const LARGE_TITLE_COLLAPSE = 52;
+
 function SurahListPanel({
   query,
   onQueryChange,
@@ -334,6 +337,16 @@ function SurahListPanel({
   const inputRef = useRef<TextInput>(null);
   const cancelAnim = useRef(new Animated.Value(0)).current;
 
+  // Tracks the FlatList scroll offset to drive the large ↔ compact title
+  // crossfade, matching UINavigationController's large-title behaviour.
+  const scrollY = useRef(new Animated.Value(0)).current;
+  // Remember previous query so we can detect the empty→non-empty transition.
+  const prevQueryRef = useRef(query);
+
+  // Declared early so all effects below can safely reference them.
+  const listRef = useRef<FlatList<Surah>>(null);
+  const headerHeightRef = useRef(0);
+
   useEffect(() => {
     Animated.timing(cancelAnim, {
       toValue: isFocused ? 1 : 0,
@@ -342,6 +355,39 @@ function SurahListPanel({
       useNativeDriver: false,
     }).start();
   }, [isFocused, cancelAnim]);
+
+  // When the user starts typing, snap scrollY to the collapse threshold so the
+  // compact nav-bar title is immediately visible (search mode has no large title).
+  // When the query is cleared, reset so the large title reappears at the top.
+  useEffect(() => {
+    if (!prevQueryRef.current && query) {
+      scrollY.setValue(LARGE_TITLE_COLLAPSE);
+    } else if (prevQueryRef.current && !query) {
+      scrollY.setValue(0);
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }
+    prevQueryRef.current = query;
+  }, [query, scrollY]);
+
+  // ── Derived animated values ─────────────────────────────────────────────────
+  // Compact nav-bar title: invisible at top, fully opaque once collapsed.
+  const compactTitleOpacity = scrollY.interpolate({
+    inputRange: [LARGE_TITLE_COLLAPSE * 0.5, LARGE_TITLE_COLLAPSE],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
+  // Large list-header title: visible at top, fades + slides up as user scrolls.
+  const largeTitleOpacity = scrollY.interpolate({
+    inputRange: [0, LARGE_TITLE_COLLAPSE * 0.65],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+  const largeTitleTranslateY = scrollY.interpolate({
+    inputRange: [0, LARGE_TITLE_COLLAPSE],
+    outputRange: [0, -14],
+    extrapolate: "clamp",
+  });
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return surahs;
@@ -359,11 +405,8 @@ function SurahListPanel({
   }, [query]);
 
   // Anchor the initial scroll on the currently-playing surah so the user lands
-  // near where they are (no need to scroll through 100+ rows to find it).
-  // We use scrollToOffset instead of scrollToIndex so the variable-height
-  // ListHeaderComponent doesn't throw off the calculation.
-  const listRef = useRef<FlatList<Surah>>(null);
-  const headerHeightRef = useRef(0);
+  // near where they are. We sync scrollY so the title state is immediately
+  // correct without waiting for a scroll event.
   useEffect(() => {
     if (!query) {
       const idx = surahs.findIndex((s) => s.number === currentSurah);
@@ -372,18 +415,29 @@ function SurahListPanel({
           try {
             const offset = headerHeightRef.current + idx * SURAH_ROW_HEIGHT;
             listRef.current?.scrollToOffset({ offset, animated: false });
+            // Mirror the offset into the animated value so the compact/large
+            // title state matches the actual scroll position on open.
+            scrollY.setValue(Math.min(offset, LARGE_TITLE_COLLAPSE));
           } catch {
             // ignore — list may not be ready yet
           }
         });
+      } else {
+        scrollY.setValue(0);
       }
     }
-  }, [currentSurah, query, recentSurahs.length]);
+  }, [currentSurah, query, recentSurahs.length, scrollY]);
 
   return (
     <View style={styles.panelInner}>
+      {/* ── Nav bar ────────────────────────────────────────────────────────────
+          Always visible. The compact "Surah" title starts invisible and crossfades
+          in as the large title in the list header scrolls off the top — the same
+          behaviour as UINavigationController with largeTitleDisplayMode = .automatic */}
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>Surah</Text>
+        <Animated.Text style={[styles.headerTitle, { opacity: compactTitleOpacity }]}>
+          Surah
+        </Animated.Text>
         <TouchableOpacity
           onPress={onClose}
           hitSlop={12}
@@ -395,6 +449,7 @@ function SurahListPanel({
         </TouchableOpacity>
       </View>
 
+      {/* ── Search bar — sticky below nav bar ─────────────────────────────── */}
       <View style={styles.searchRow}>
         <View style={[styles.searchWrap, isFocused && styles.searchWrapFocused]}>
           <SymbolIcon
@@ -459,6 +514,7 @@ function SurahListPanel({
         </Animated.View>
       </View>
 
+      {/* ── Surah list ─────────────────────────────────────────────────────── */}
       <FlatList
         ref={listRef}
         data={filtered}
@@ -466,29 +522,49 @@ function SurahListPanel({
         keyboardShouldPersistTaps="handled"
         initialNumToRender={16}
         windowSize={11}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true },
+        )}
+        scrollEventThrottle={16}
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingBottom: bottomInset + 24,
         }}
         ListHeaderComponent={
-          !query && (bookmarks.length > 0 || recentSurahs.length > 0) ? (
-            <View onLayout={(e) => { headerHeightRef.current = e.nativeEvent.layout.height; }}>
-              {bookmarks.length > 0 && (
-                <BookmarksSection
-                  bookmarks={bookmarks}
-                  currentSurah={currentSurah}
-                  onSelect={onSelectBookmark}
-                />
-              )}
-              {recentSurahs.length > 0 && (
-                <RecentSurahsSection
-                  recentSurahs={recentSurahs}
-                  currentSurah={currentSurah}
-                  onSelectSurah={onSelectSurah}
-                />
-              )}
-            </View>
-          ) : null
+          <View onLayout={(e) => { headerHeightRef.current = e.nativeEvent.layout.height; }}>
+            {/* Large title — lives in the scroll content so it naturally
+                scrolls off the top; opacity + translateY fade/slide it away
+                as the compact nav-bar title fades in above. Hidden during
+                search since the compact title already provides context. */}
+            {!query && (
+              <Animated.Text
+                style={[
+                  styles.largeTitle,
+                  {
+                    opacity: largeTitleOpacity,
+                    transform: [{ translateY: largeTitleTranslateY }],
+                  },
+                ]}
+              >
+                Surah
+              </Animated.Text>
+            )}
+            {!query && bookmarks.length > 0 && (
+              <BookmarksSection
+                bookmarks={bookmarks}
+                currentSurah={currentSurah}
+                onSelect={onSelectBookmark}
+              />
+            )}
+            {!query && recentSurahs.length > 0 && (
+              <RecentSurahsSection
+                recentSurahs={recentSurahs}
+                currentSurah={currentSurah}
+                onSelectSurah={onSelectSurah}
+              />
+            )}
+          </View>
         }
         ListEmptyComponent={
           <Text style={styles.emptyText}>No surah matches "{query}"</Text>
@@ -988,12 +1064,24 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     minHeight: 52,
   },
+  // Compact nav-bar title — starts invisible, crossfades in as user scrolls.
   headerTitle: {
     fontSize: 17,
     color: "#f5f5f5",
     fontWeight: "600",
     letterSpacing: -0.2,
     paddingHorizontal: 4,
+  },
+  // Large title — lives in the FlatList header so it scrolls with content.
+  // 34pt Bold matches UINavigationController's largeTitleDisplayMode = .automatic.
+  largeTitle: {
+    fontSize: 34,
+    fontWeight: "700",
+    color: "#f5f5f5",
+    letterSpacing: 0.37,
+    paddingHorizontal: 20,
+    paddingTop: 2,
+    paddingBottom: 18,
   },
   closeBtn: {
     width: 32,
