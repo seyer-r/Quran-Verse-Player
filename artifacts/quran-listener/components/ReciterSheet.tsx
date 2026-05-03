@@ -1,6 +1,5 @@
 import { SymbolIcon } from "@/components/SymbolIcon";
 import { RECITERS, type ReciterId } from "@/data/reciters";
-import { PLAYBACK_SPEEDS, type PlaybackSpeed } from "@/lib/useSettings";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -20,8 +19,6 @@ interface ReciterSheetProps {
   onClose: () => void;
   reciterId: ReciterId;
   onReciterChange: (id: ReciterId) => void;
-  playbackSpeed: PlaybackSpeed;
-  onPlaybackSpeedChange: (speed: PlaybackSpeed) => void;
 }
 
 const ANIM_MS = 280;
@@ -31,8 +28,6 @@ export function ReciterSheet({
   onClose,
   reciterId,
   onReciterChange,
-  playbackSpeed,
-  onPlaybackSpeedChange,
 }: ReciterSheetProps) {
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(open);
@@ -184,27 +179,6 @@ export function ReciterSheet({
             })}
           </View>
 
-          {/* ── Playback Speed ── */}
-          <Text style={styles.speedLabel}>Playback Speed</Text>
-          <View style={styles.speedRow}>
-            {(PLAYBACK_SPEEDS as readonly number[]).map((s) => {
-              const sel = s === playbackSpeed;
-              return (
-                <TouchableOpacity
-                  key={s}
-                  onPress={() => onPlaybackSpeedChange(s as PlaybackSpeed)}
-                  activeOpacity={0.7}
-                  style={[styles.speedPill, sel && styles.speedPillSelected]}
-                  accessibilityLabel={`${s}× speed`}
-                  accessibilityState={{ selected: sel }}
-                >
-                  <Text style={[styles.speedPillText, sel && styles.speedPillTextSel]}>
-                    {s}×
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -296,36 +270,5 @@ const styles = StyleSheet.create({
   rowAccessory: {
     minWidth: 22,
     alignItems: "flex-end",
-  },
-  speedLabel: {
-    fontSize: 13,
-    color: "#8e8e93",
-    fontWeight: "500",
-    letterSpacing: 0.2,
-    marginTop: 22,
-    marginBottom: 10,
-  },
-  speedRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 4,
-  },
-  speedPill: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 9,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-  speedPillSelected: {
-    backgroundColor: "rgba(232,192,120,0.15)",
-  },
-  speedPillText: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: "#8e8e93",
-  },
-  speedPillTextSel: {
-    color: "#e8c078",
   },
 });

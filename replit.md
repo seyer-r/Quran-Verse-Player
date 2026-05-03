@@ -25,7 +25,7 @@ The `quran-listener` mobile application is built with Expo / React Native.
 - **Player Controls:** Apple Human Interface Guidelines (HIG) compliant with prev/play-pause/next buttons, progress bars (segmented for short surahs, single for long), and haptic feedback. Play button shows an `ActivityIndicator` when buffering. Restart icon replaces play button upon surah completion.
 - **Settings Panel:** Implemented as a bottom sheet with rounded top corners, a drag handle, and swipe-down-to-dismiss.
 - **Marquee Text:** Reciter names in the footer use `MarqueeText` component for smooth, looping scroll when overflowing.
-- **Sleep Timer:** Displays as a circular ring using `react-native-svg` for a visual countdown.
+- **Sleep Timer:** Active timer shown as a tappable chip above the progress bar (tap to cancel). The circular `SleepTimerRing` is no longer rendered in the footer controls.
 - **Scroll Edge Fade:** Long ayahs that overflow the screen have `LinearGradient` overlays at top and bottom to indicate scrollability and soften clipping.
 
 **Technical Implementations:**

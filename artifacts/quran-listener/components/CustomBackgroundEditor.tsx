@@ -522,14 +522,19 @@ export function CustomBackgroundEditor({
               {/* Placeholder when no media */}
               {!hasMedia && (
                 <View style={styles.placeholder} pointerEvents="none">
-                  <SymbolIcon
-                    name="photo.on.rectangle"
-                    fallbackIonicon="images-outline"
-                    size={34}
-                    color="#3a3a3c"
-                  />
+                  <View style={styles.placeholderGlow}>
+                    <SymbolIcon
+                      name="photo.on.rectangle"
+                      fallbackIonicon="images-outline"
+                      size={44}
+                      color="#4a4a4e"
+                    />
+                  </View>
                   <Text style={styles.placeholderText}>
-                    Choose a photo or video{"\n"}to preview it here
+                    Your chosen image or video{"\n"}will appear here
+                  </Text>
+                  <Text style={styles.placeholderHint}>
+                    Tap Choose Photo or Video below
                   </Text>
                 </View>
               )}
@@ -555,7 +560,10 @@ export function CustomBackgroundEditor({
                   {/* Status bar row */}
                   <View style={styles.statusRow}>
                     <Text style={styles.statusTime}>9:41</Text>
-                    <Text style={styles.statusIcons}>▲ ▲ ▬</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <SymbolIcon name="wifi" fallbackIonicon="wifi" size={8} color="rgba(255,255,255,0.8)" />
+                      <SymbolIcon name="battery.100" fallbackIonicon="battery-full" size={9} color="rgba(255,255,255,0.8)" />
+                    </View>
                   </View>
 
                   {/* Surah eyebrow */}
@@ -766,13 +774,28 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 8,
+  },
+  placeholderGlow: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(232,192,120,0.04)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
   },
   placeholderText: {
     fontSize: 12,
-    color: "#3a3a3c",
+    color: "#4a4a4e",
     textAlign: "center",
     lineHeight: 18,
+  },
+  placeholderHint: {
+    fontSize: 10,
+    color: "#2e2e30",
+    textAlign: "center",
+    marginTop: 2,
   },
 
   // Status bar inside mockup

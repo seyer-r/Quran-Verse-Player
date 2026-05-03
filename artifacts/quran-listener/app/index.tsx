@@ -37,7 +37,6 @@ import { CustomBackgroundEditor } from "@/components/CustomBackgroundEditor";
 import { MarqueeText } from "@/components/MarqueeText";
 import { ReciterSheet } from "@/components/ReciterSheet";
 import { SettingsPanel } from "@/components/SettingsPanel";
-import { SleepTimerRing } from "@/components/SleepTimerRing";
 import { SurahPicker } from "@/components/SurahPicker";
 import { VideoBackground } from "@/components/VideoBackground";
 import { AMBIENT_OPTIONS, type AmbientId, getAmbient } from "@/data/ambient";
@@ -153,6 +152,7 @@ export default function PlayerScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reciterSheetOpen, setReciterSheetOpen] = useState(false);
   const [verseMenuVisible, setVerseMenuVisible] = useState(false);
+  const [copyConfirmed, setCopyConfirmed] = useState(false);
   const menuScale = useRef(new Animated.Value(0.88)).current;
   const [pickerInitialStep, setPickerInitialStep] = useState<
     "surah" | "ayah"
@@ -163,7 +163,7 @@ export default function PlayerScreen() {
   const [chromeVisible, setChromeVisible] = useState(true);
   const chromeOpacity = useRef(new Animated.Value(1)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const HIDE_DELAY_MS = 3500;
+  const HIDE_DELAY_MS = 5000;
 
   // ── Surah header crossfade (Apple Music–style content transition) ──────────
   // `displayedSurah` lags one animation frame behind `surah` so the header
@@ -1552,12 +1552,17 @@ export default function PlayerScreen() {
               </View>
             </TouchableOpacity>
             <View style={styles.headerRight}>
-              <SurahNameGlyph
-                surah={displayedSurah}
-                size={28}
-                color="#f5f5f5"
-                style={styles.surahArabicGlyph}
-              />
+              <View
+                accessibilityElementsHidden={true}
+                importantForAccessibility="no-hide-descendants"
+              >
+                <SurahNameGlyph
+                  surah={displayedSurah}
+                  size={28}
+                  color="#f5f5f5"
+                  style={styles.surahArabicGlyph}
+                />
+              </View>
               <TouchableOpacity
                 onPress={() => {
                   pokeControls();
@@ -1591,9 +1596,9 @@ export default function PlayerScreen() {
               setPickerInitialStep("ayah");
               setPickerOpen(true);
             }}
-            hitSlop={10}
             activeOpacity={0.7}
             accessibilityLabel="Choose ayah"
+            style={{ paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: "center" }}
           >
             <Text style={[styles.counter, secondaryOverride]}>
               Ayah {ayahs[index].number} of {ayahs.length}
@@ -1642,6 +1647,29 @@ export default function PlayerScreen() {
           ]}
           pointerEvents={chromeVisible ? "auto" : "none"}
         >
+          {sleepExpiresAt !== null && sleepDurationMin !== null && (
+            <TouchableOpacity
+              style={styles.sleepChip}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setSleepTimerMinutes(null);
+              }}
+              activeOpacity={0.7}
+              accessibilityLabel="Cancel sleep timer"
+              hitSlop={8}
+            >
+              <SymbolIcon
+                name="moon.fill"
+                fallbackIonicon="moon"
+                size={11}
+                color="#e8c078"
+              />
+              <Text style={styles.sleepChipText}>
+                {formatRemaining(sleepRemainingMs)} · tap to cancel
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {ayahs.length <= SEGMENTED_PROGRESS_MAX ? (
             <View style={styles.progressRow}>
               {ayahs.map((a, i) => {
@@ -1791,28 +1819,41 @@ export default function PlayerScreen() {
             </View>
 
             <View style={styles.restartCol}>
-              {sleepExpiresAt != null && sleepDurationMin != null ? (
-                <SleepTimerRing
-                  remainingMs={sleepRemainingMs}
-                  durationMin={sleepDurationMin}
-                  onCancel={() => setSleepTimerMinutes(null)}
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setRepeatAyah(!settings.repeatAyah);
+                }}
+                hitSlop={8}
+                activeOpacity={0.6}
+                accessibilityLabel={settings.repeatAyah ? "Stop repeating" : "Repeat ayah"}
+                accessibilityState={{ selected: settings.repeatAyah }}
+              >
+                <SymbolIcon
+                  name="repeat.1"
+                  fallbackIonicon="repeat"
+                  size={20}
+                  color={settings.repeatAyah ? "#e8c078" : "#8e8e93"}
                 />
-              ) : (
-                <TouchableOpacity
-                  onPress={restart}
-                  hitSlop={8}
-                  activeOpacity={0.6}
-                >
-                  <SymbolIcon
-                    name="arrow.counterclockwise"
-                    fallbackIonicon="refresh"
-                    size={20}
-                    color="#8e8e93"
-                  />
-                </TouchableOpacity>
-              )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={restart}
+                hitSlop={8}
+                activeOpacity={0.6}
+                accessibilityLabel="Restart surah"
+              >
+                <SymbolIcon
+                  name="arrow.counterclockwise"
+                  fallbackIonicon="refresh"
+                  size={20}
+                  color="#8e8e93"
+                />
+              </TouchableOpacity>
             </View>
           </View>
+          {audioError && (
+            <Text style={styles.errorCaption}>Tap to retry</Text>
+          )}
         </Animated.View>
       </Pressable>
 
@@ -1837,6 +1878,8 @@ export default function PlayerScreen() {
         onBackgroundDimChange={setBackgroundDim}
         onSleepTimerChange={setSleepTimerMinutes}
         customBackground={settings.customBackground}
+        playbackSpeed={settings.playbackSpeed}
+        onPlaybackSpeedChange={setPlaybackSpeed}
         onOpenCustomBgEditor={() => {
           setSettingsOpen(false);
           // Wait for the settings sheet close animation to finish before
@@ -1876,8 +1919,6 @@ export default function PlayerScreen() {
         onClose={() => setReciterSheetOpen(false)}
         reciterId={settings.reciterId}
         onReciterChange={handleReciterChange}
-        playbackSpeed={settings.playbackSpeed}
-        onPlaybackSpeedChange={setPlaybackSpeed}
       />
 
       {/* ── Verse context menu (long-press) — Apple UIContextMenu style ─── */}
@@ -1914,7 +1955,7 @@ export default function PlayerScreen() {
                 {ayahs[index].arabic}
               </Text>
               <Text style={styles.ctxPreviewMeta}>
-                {surah.name}{"  ·  "}Ayah {ayahs[index].number}
+                {surah.nameLatin}{"  ·  "}Ayah {ayahs[index].number}
               </Text>
             </Pressable>
 
@@ -1981,9 +2022,12 @@ export default function PlayerScreen() {
                 <Text style={styles.ctxRowLabel}>
                   {settings.repeatAyah ? "Stop Repeating" : "Repeat Ayah"}
                 </Text>
-                <Text style={styles.ctxRowIcon}>
-                  {settings.repeatAyah ? "✓" : "↺"}
-                </Text>
+                <SymbolIcon
+                  name={settings.repeatAyah ? "checkmark" : "repeat.1"}
+                  fallbackIonicon={settings.repeatAyah ? "checkmark" : "repeat"}
+                  size={17}
+                  color={settings.repeatAyah ? "#34C759" : "#8e8e93"}
+                />
               </TouchableOpacity>
 
               <View style={styles.ctxSep} />
@@ -2005,11 +2049,20 @@ export default function PlayerScreen() {
                   Haptics.notificationAsync(
                     Haptics.NotificationFeedbackType.Success,
                   );
-                  setVerseMenuVisible(false);
+                  setCopyConfirmed(true);
+                  setTimeout(() => {
+                    setCopyConfirmed(false);
+                    setVerseMenuVisible(false);
+                  }, 1200);
                 }}
               >
-                <Text style={styles.ctxRowLabel}>Copy Arabic</Text>
-                <Text style={styles.ctxRowIcon}>⎘</Text>
+                <Text style={styles.ctxRowLabel}>{copyConfirmed ? "Copied" : "Copy Arabic"}</Text>
+                <SymbolIcon
+                  name={copyConfirmed ? "checkmark" : "doc.on.doc"}
+                  fallbackIonicon={copyConfirmed ? "checkmark" : "copy-outline"}
+                  size={17}
+                  color={copyConfirmed ? "#34C759" : "#8e8e93"}
+                />
               </TouchableOpacity>
 
               <View style={styles.ctxSep} />
@@ -2039,7 +2092,12 @@ export default function PlayerScreen() {
                 }}
               >
                 <Text style={styles.ctxRowLabel}>Share Ayah</Text>
-                <Text style={styles.ctxRowIcon}>↗</Text>
+                <SymbolIcon
+                  name="square.and.arrow.up"
+                  fallbackIonicon="share-outline"
+                  size={17}
+                  color="#8e8e93"
+                />
               </TouchableOpacity>
             </Pressable>
           </Animated.View>
@@ -2229,6 +2287,8 @@ const styles = StyleSheet.create({
   reciterCol: {
     flex: 1,
     minWidth: 0,
+    minHeight: 44,
+    justifyContent: "center",
   },
   reciterEyebrowRow: {
     flexDirection: "row",
@@ -2279,8 +2339,16 @@ const styles = StyleSheet.create({
   },
   restartCol: {
     flex: 1,
-    alignItems: "flex-end",
-    justifyContent: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 14,
+  },
+  errorCaption: {
+    textAlign: "center",
+    color: "#8e8e93",
+    fontSize: 13,
+    marginTop: 6,
   },
   // ── Apple UIContextMenu styles ─────────────────────────────────────────────
   // Overlay: full-screen dim. On web we add backdropFilter via inline style.

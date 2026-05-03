@@ -4,6 +4,8 @@ import {
   ARABIC_FONT_SCALES,
   type ArabicFontScale,
   type CustomBg,
+  PLAYBACK_SPEEDS,
+  type PlaybackSpeed,
 } from "@/lib/useSettings";
 import { Image } from "expo-image";
 import React, { useEffect, useRef, useState } from "react";
@@ -58,6 +60,7 @@ interface SettingsPanelProps {
   sleepTimerMinutes: number | null;
   arabicFontScale: ArabicFontScale;
   customBackground: CustomBg | null;
+  playbackSpeed: PlaybackSpeed;
   onTransitionChange: (mode: TransitionMode) => void;
   onBackgroundChange: (id: BackgroundId) => void;
   onAmbientChange: (id: AmbientId) => void;
@@ -66,6 +69,7 @@ interface SettingsPanelProps {
   onBackgroundDimChange: (next: boolean) => void;
   onSleepTimerChange: (minutes: number | null) => void;
   onArabicFontScaleChange: (scale: ArabicFontScale) => void;
+  onPlaybackSpeedChange: (speed: PlaybackSpeed) => void;
   onOpenCustomBgEditor: () => void;
 }
 
@@ -74,7 +78,7 @@ const SLEEP_OPTIONS: { label: string; shortLabel: string; minutes: number | null
   { label: "10 min", shortLabel: "10m", minutes: 10 },
   { label: "20 min", shortLabel: "20m", minutes: 20 },
   { label: "30 min", shortLabel: "30m", minutes: 30 },
-  { label: "1 hour", shortLabel: "1h", minutes: 60 },
+  { label: "1 hour", shortLabel: "60m", minutes: 60 },
 ];
 
 const ANIM_MS = 320;
@@ -93,6 +97,7 @@ export function SettingsPanel({
   sleepTimerMinutes,
   arabicFontScale,
   customBackground,
+  playbackSpeed,
   onTransitionChange,
   onBackgroundChange,
   onAmbientChange,
@@ -101,6 +106,7 @@ export function SettingsPanel({
   onBackgroundDimChange,
   onSleepTimerChange,
   onArabicFontScaleChange,
+  onPlaybackSpeedChange,
   onOpenCustomBgEditor,
 }: SettingsPanelProps) {
   const { height: screenHeight } = useWindowDimensions();
@@ -350,15 +356,7 @@ export function SettingsPanel({
                             StyleSheet.absoluteFill,
                             { backgroundColor: "#000" },
                           ]}
-                        >
-                          <SymbolIcon
-                            name="xmark"
-                            fallbackIonicon="close"
-                            size={20}
-                            color="#525252"
-                            style={styles.bgNoneIcon}
-                          />
-                        </View>
+                        />
                       )}
                       {/* "Live" badge on video backgrounds */}
                       {bg.videoUrl && !selected && (
@@ -429,7 +427,7 @@ export function SettingsPanel({
                 <FontSizeStepper
                   value={arabicFontScale}
                   steps={ARABIC_FONT_SCALES}
-                  onChange={onArabicFontScaleChange}
+                  onChange={(v) => onArabicFontScaleChange(v as ArabicFontScale)}
                 />
               </View>
             </View>
@@ -551,6 +549,28 @@ export function SettingsPanel({
                   />
                 </View>
               </View>
+            </View>
+
+            {/* === PLAYBACK SPEED === */}
+            <SectionHeader title="Playback speed" style={{ marginTop: 28 }} />
+            <View style={styles.speedPillContainer}>
+              {(PLAYBACK_SPEEDS as readonly number[]).map((s) => {
+                const sel = s === playbackSpeed;
+                return (
+                  <TouchableOpacity
+                    key={s}
+                    onPress={() => onPlaybackSpeedChange(s as PlaybackSpeed)}
+                    activeOpacity={0.7}
+                    style={[styles.speedPill, sel && styles.speedPillSelected]}
+                    accessibilityLabel={`${s}× speed`}
+                    accessibilityState={{ selected: sel }}
+                  >
+                    <Text style={[styles.speedPillText, sel && styles.speedPillTextSelected]}>
+                      {s}×
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* === SLEEP TIMER === */}
@@ -752,7 +772,7 @@ function ToggleSwitch({
           width: TRACK_W,
           height: TRACK_H,
           borderRadius: TRACK_H / 2,
-          backgroundColor: value ? "#e8c078" : "rgba(255,255,255,0.14)",
+          backgroundColor: value ? "#34C759" : "rgba(255,255,255,0.14)",
         },
       ]}
     >
@@ -834,8 +854,8 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 13,
     color: "#8e8e93",
-    fontWeight: "400",
-    letterSpacing: 0,
+    fontWeight: "500",
+    letterSpacing: 0.8,
     textTransform: "uppercase",
     marginBottom: 10,
     marginLeft: 4,
@@ -1035,6 +1055,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#737373",
     lineHeight: 18,
+  },
+
+  // Playback speed pills (same layout as sleep pills)
+  speedPillContainer: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 14,
+    padding: 5,
+    gap: 4,
+  },
+  speedPill: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  speedPillSelected: {
+    backgroundColor: "rgba(232,192,120,0.18)",
+  },
+  speedPillText: {
+    fontSize: 15,
+    color: "#737373",
+    fontWeight: "400",
+  },
+  speedPillTextSelected: {
+    color: "#e8c078",
+    fontWeight: "600",
   },
 
   // Font size stepper (Apple-style "A — dots — A")
