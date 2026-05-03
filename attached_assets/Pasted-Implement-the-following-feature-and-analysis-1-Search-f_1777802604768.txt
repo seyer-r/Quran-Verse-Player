@@ -1,0 +1,26 @@
+Implement the following feature and analysis:
+
+1. Search for a Specific Ayah Within a Surah Add the ability for the user to search for a specific Ayah within a Surah directly from the search bar. This must:
+* Feel completely native and Apple-like — study how Apple handles search within lists in native apps like Contacts, Music, and Notes
+* Allow the user to type either the Ayah number or keywords from the Ayah text and get relevant results instantly
+* Results must update in real time as the user types — no need to press a search button
+* Tapping a result must navigate to that Ayah instantly and cleanly
+* The search bar must feel like a natural part of the existing UI — not bolted on or out of place
+* Handle empty states and no results gracefully with a clean, Apple-like empty state message
+* Screenshot and verify the design at every stage — if anything looks off, fix it before moving on
+
+2. Pros and Cons — Remove the Scroll-Based Ayah Picker Conduct a thorough analysis on whether the scroll-based Ayah picker should be removed now that the user can simply type the Ayah they want. The analysis must cover:
+Arguments for removing it:
+* Is typing faster and more intuitive than scrolling through a long list?
+* Does the scroll picker add visual clutter or take up unnecessary screen space?
+* Does it conflict with or duplicate the new search feature?
+* Would removing it simplify the UI and make it feel more minimal and Apple-like?
+Arguments for keeping it:
+* Are there users who prefer browsing visually without knowing the exact Ayah number or text?
+* Does the scroll picker offer a different kind of discoverability that search cannot replace?
+* Are there accessibility or usability cases where scrolling is preferable to typing?
+* Would removing it feel like a loss of control for the user?
+Conclusion:
+* Based on the analysis, give a clear recommendation on whether to remove, keep, or redesign the scroll picker
+* If redesigning is recommended, briefly describe what that would look like
+* Reference how Apple handles similar navigation patterns in their apps to support the recommendation"
