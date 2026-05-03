@@ -39,15 +39,6 @@ import {
   type TransitionMode,
 } from "@/lib/transitions";
 
-const AMBIENT_IONICONS: Record<AmbientId, keyof typeof Ionicons.glyphMap> = {
-  off: "ban",
-  rain: "rainy",
-  ocean: "water",
-  forest: "leaf",
-  night: "moon",
-  wind: "cloudy",
-};
-
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
@@ -451,7 +442,7 @@ export function SettingsPanel({
                     <View style={styles.rowIcon}>
                       <SymbolIcon
                         name={opt.sfSymbol as any}
-                        fallbackIonicon={AMBIENT_IONICONS[opt.id]}
+                        fallbackIonicon={opt.feather as any}
                         size={18}
                         color={selected ? "#f5f5f5" : "#737373"}
                       />

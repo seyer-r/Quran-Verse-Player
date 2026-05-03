@@ -1090,10 +1090,6 @@ export default function PlayerScreen() {
   // on the fresh player without requiring a manual tap.
   const handleReciterChange = useCallback(
     (id: ReciterId) => {
-      // Pause the current player IMMEDIATELY so the outgoing reciter goes
-      // silent before the new bundle is even constructed. Without this,
-      // the old AudioPlayer can bleed audio until React commits the new
-      // bundle and the teardown effect runs.
       const current = currentRecitationPlayerRef.current;
       if (current) safePause(current);
       reciterChangedRef.current = isPlayingRef.current;
@@ -1882,10 +1878,7 @@ export default function PlayerScreen() {
         onPlaybackSpeedChange={setPlaybackSpeed}
         onOpenCustomBgEditor={() => {
           setSettingsOpen(false);
-          // Wait for the settings sheet close animation to finish before
-          // opening the fullscreen modal — simultaneous animations freeze
-          // the JS thread on native (iOS/Expo Go).
-          setTimeout(() => setCustomBgEditorOpen(true), 380);
+          setCustomBgEditorOpen(true);
         }}
       />
 
