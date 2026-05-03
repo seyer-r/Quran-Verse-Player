@@ -291,6 +291,7 @@ export function SurahPicker({
                   onBack={handleBackToSurahList}
                   onClose={onClose}
                   onConfirm={handleConfirm}
+                  onSelectDirect={(ayah) => onSelect(draftSurah, ayah)}
                   bottomInset={bottomInset}
                   active={step === "ayah"}
                 />
@@ -760,6 +761,11 @@ interface AyahWheelPanelProps {
   onBack: () => void;
   onClose: () => void;
   onConfirm: () => void;
+  /**
+   * Called when the user taps a search result — skips the wheel entirely and
+   * navigates directly to that ayah without pressing the confirm button.
+   */
+  onSelectDirect: (ayahNumber: number) => void;
   bottomInset: number;
   /** True when this panel is the visible step — used to sync the wheel position. */
   active: boolean;
@@ -772,13 +778,63 @@ function AyahWheelPanel({
   onBack,
   onClose,
   onConfirm,
+  onSelectDirect,
   bottomInset,
   active,
 }: AyahWheelPanelProps) {
+  const [ayahQuery, setAyahQuery] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const ayahInputRef = useRef<TextInput>(null);
+  const cancelAnim = useRef(new Animated.Value(0)).current;
+
+  const searching = ayahQuery.trim().length > 0;
+
+  // Animate the Cancel button in/out when the search field gains/loses focus.
+  useEffect(() => {
+    Animated.timing(cancelAnim, {
+      toValue: isSearchFocused ? 1 : 0,
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [isSearchFocused, cancelAnim]);
+
+  // Clear search when the user drills into a different surah.
+  useEffect(() => {
+    setAyahQuery("");
+    setIsSearchFocused(false);
+  }, [surah.number]);
+
+  // Clear search when the panel goes offscreen (user pressed "Surah" back button).
+  useEffect(() => {
+    if (!active) {
+      setAyahQuery("");
+      setIsSearchFocused(false);
+    }
+  }, [active]);
+
+  // Filter ayahs in real time.
+  //   • Pure digits → match by ayah number (exact or prefix).
+  //   • Text         → search English translation keywords.
+  const filteredAyahs = useMemo(() => {
+    const q = ayahQuery.trim().toLowerCase();
+    if (!q) return [] as typeof surah.ayahs;
+    if (/^\d+$/.test(q)) {
+      const n = parseInt(q, 10);
+      return surah.ayahs.filter(
+        (a) => a.number === n || String(a.number).startsWith(q),
+      );
+    }
+    return surah.ayahs.filter((a) =>
+      a.translation.toLowerCase().includes(q),
+    );
+  }, [ayahQuery, surah.ayahs]);
+
   const ayah = surah.ayahs[draftAyah - 1];
 
   return (
     <View style={styles.panelInner}>
+      {/* ── Nav bar ─────────────────────────────────────────────────────────── */}
       <View style={styles.headerRow}>
         <TouchableOpacity
           onPress={onBack}
@@ -801,63 +857,164 @@ function AyahWheelPanel({
         </TouchableOpacity>
       </View>
 
-      <View style={styles.surahCardWrap}>
+      {/* ── Surah identity card — compact in search mode to save room ───────── */}
+      <View style={[styles.surahCardWrap, searching && styles.surahCardWrapCompact]}>
         <Text style={styles.surahCardEyebrow}>Surah {surah.number}</Text>
         <Text style={styles.surahCardLatin} numberOfLines={1}>
           {surah.nameLatin}
         </Text>
-        <SurahNameGlyph
-          surah={surah}
-          size={36}
-          color="#f5f5f5"
-          style={styles.surahCardArabicGlyph}
-        />
-        <Text style={styles.surahCardMeta}>
+        {!searching && (
+          <SurahNameGlyph
+            surah={surah}
+            size={36}
+            color="#f5f5f5"
+            style={styles.surahCardArabicGlyph}
+          />
+        )}
+        <Text style={[styles.surahCardMeta, searching && { marginTop: 4 }]}>
           {surah.meaning} · {surah.ayahCount} ayahs · {surah.revelationType}
         </Text>
       </View>
 
-      <View style={styles.previewWrap}>
-        <Text style={styles.previewLabel}>Ayah {draftAyah}</Text>
-        <Text
-          style={styles.previewArabic}
-          numberOfLines={2}
-          ellipsizeMode="tail"
-          allowFontScaling={false}
+      {/* ── Ayah search bar ─────────────────────────────────────────────────── */}
+      <View style={styles.ayahSearchRow}>
+        <View style={[styles.searchWrap, isSearchFocused && styles.searchWrapFocused]}>
+          <SymbolIcon
+            name="magnifyingglass"
+            fallbackIonicon="search"
+            size={16}
+            color="#8e8e93"
+            style={styles.searchIcon}
+          />
+          <TextInput
+            ref={ayahInputRef}
+            value={ayahQuery}
+            onChangeText={setAyahQuery}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
+            placeholder="Ayah number or keyword…"
+            placeholderTextColor="#636366"
+            style={styles.searchInput as TextStyle}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            accessibilityLabel="Search ayahs"
+          />
+          {/* Clear button — appears once the user has typed something */}
+          <Animated.View
+            style={{
+              opacity: cancelAnim,
+              width: cancelAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 24] }),
+              overflow: "hidden",
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => setAyahQuery("")}
+              hitSlop={8}
+              style={styles.searchClear}
+            >
+              <SymbolIcon
+                name="xmark.circle.fill"
+                fallbackIonicon="close-circle"
+                size={16}
+                color="#636366"
+              />
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+
+        {/* Cancel button — animated width so layout never jumps */}
+        <Animated.View
+          style={{
+            overflow: "hidden",
+            opacity: cancelAnim,
+            width: cancelAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 66] }),
+          }}
         >
-          {ayah.arabic}
-          {ayahMarker(ayah.number)}
-        </Text>
-        <Text
-          style={styles.previewTranslation}
-          numberOfLines={2}
-          ellipsizeMode="tail"
-        >
-          {ayah.translation}
-        </Text>
+          <TouchableOpacity
+            onPress={() => {
+              setAyahQuery("");
+              ayahInputRef.current?.blur();
+            }}
+            hitSlop={8}
+            style={styles.searchCancel}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.searchCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
-      <WheelPicker
-        count={surah.ayahCount}
-        value={draftAyah}
-        onChange={onChange}
-        active={active}
-        // Re-anchor the wheel when the user picks a different surah.
-        anchorKey={surah.number}
-      />
+      {/* ── Content: search results OR wheel + verse preview ────────────────── */}
+      {searching ? (
+        /* ── Search results list ── */
+        <FlatList
+          style={{ flex: 1 }}
+          data={filteredAyahs}
+          keyExtractor={(a) => String(a.number)}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={styles.ayahResultsList}
+          renderItem={({ item }) => (
+            <AyahResultRow
+              ayah={item}
+              onPress={() => onSelectDirect(item.number)}
+            />
+          )}
+          ListEmptyComponent={
+            <View style={styles.ayahEmptyWrap}>
+              <Text style={styles.ayahEmptyTitle}>No Results</Text>
+              <Text style={styles.ayahEmptyBody}>
+                Try a different ayah number or{"\n"}a word from the translation.
+              </Text>
+            </View>
+          }
+        />
+      ) : (
+        /* ── Wheel + live verse preview ── */
+        <>
+          <View style={styles.previewWrap}>
+            <Text style={styles.previewLabel}>Ayah {draftAyah}</Text>
+            <Text
+              style={styles.previewArabic}
+              numberOfLines={2}
+              ellipsizeMode="tail"
+              allowFontScaling={false}
+            >
+              {ayah.arabic}
+              {ayahMarker(ayah.number)}
+            </Text>
+            <Text
+              style={styles.previewTranslation}
+              numberOfLines={2}
+              ellipsizeMode="tail"
+            >
+              {ayah.translation}
+            </Text>
+          </View>
 
-      <View style={[styles.confirmBar, { paddingBottom: bottomInset + 12 }]}>
-        <TouchableOpacity
-          onPress={onConfirm}
-          activeOpacity={0.85}
-          style={styles.confirmBtn}
-          accessibilityLabel={`Listen from ayah ${draftAyah}`}
-        >
-          <Text style={styles.confirmBtnText}>
-            Listen from ayah {draftAyah}
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <WheelPicker
+            count={surah.ayahCount}
+            value={draftAyah}
+            onChange={onChange}
+            active={active}
+            anchorKey={surah.number}
+          />
+
+          <View style={[styles.confirmBar, { paddingBottom: bottomInset + 12 }]}>
+            <TouchableOpacity
+              onPress={onConfirm}
+              activeOpacity={0.85}
+              style={styles.confirmBtn}
+              accessibilityLabel={`Listen from ayah ${draftAyah}`}
+            >
+              <Text style={styles.confirmBtnText}>
+                Listen from ayah {draftAyah}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -1012,6 +1169,53 @@ function WheelItem({ index, value, scrollY }: WheelItemProps) {
         {value}
       </Text>
     </Animated.View>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Ayah search result row                                                     */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+interface AyahResultRowProps {
+  ayah: Ayah;
+  onPress: () => void;
+}
+
+function AyahResultRow({ ayah, onPress }: AyahResultRowProps) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.6}
+      style={styles.ayahResultRow}
+      accessibilityLabel={`Ayah ${ayah.number}`}
+    >
+      <Text style={styles.ayahResultNumber}>{ayah.number}</Text>
+      <View style={styles.ayahResultContent}>
+        <Text
+          style={styles.ayahResultArabic}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          allowFontScaling={false}
+        >
+          {ayah.arabic}
+        </Text>
+        <Text
+          style={styles.ayahResultTranslation}
+          numberOfLines={2}
+          ellipsizeMode="tail"
+        >
+          {ayah.translation}
+        </Text>
+      </View>
+      <SymbolIcon
+        name="chevron.right"
+        fallbackIonicon="chevron-forward"
+        size={14}
+        color="#525252"
+        weight="semibold"
+        style={styles.ayahResultChev}
+      />
+    </TouchableOpacity>
   );
 }
 
@@ -1426,5 +1630,82 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "600",
     letterSpacing: -0.2,
+  },
+
+  // Ayah search bar (inside Panel 2 — same visual style as the surah search bar)
+  ayahSearchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginBottom: 8,
+    gap: 10,
+  },
+
+  // Compact surah identity card (search mode — hides the Arabic glyph to save space)
+  surahCardWrapCompact: {
+    paddingBottom: 12,
+  },
+
+  // Ayah results list
+  ayahResultsList: {
+    paddingBottom: 32,
+  },
+  ayahResultRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+    gap: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+  ayahResultNumber: {
+    width: 30,
+    color: "#8e8e93",
+    fontSize: 15,
+    fontWeight: "500",
+    fontVariant: ["tabular-nums"],
+    textAlign: "right",
+    paddingTop: 2,
+  },
+  ayahResultContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  ayahResultArabic: {
+    fontFamily: "UthmanicHafs",
+    fontSize: 17,
+    color: "#f5f5f5",
+    textAlign: "right",
+    writingDirection: "rtl",
+    marginBottom: 5,
+  },
+  ayahResultTranslation: {
+    fontSize: 13,
+    color: "#8e8e93",
+    lineHeight: 18,
+  },
+  ayahResultChev: {
+    marginTop: 4,
+    opacity: 0.7,
+  },
+
+  // Empty state when search returns no results
+  ayahEmptyWrap: {
+    paddingTop: 56,
+    paddingHorizontal: 32,
+    alignItems: "center",
+  },
+  ayahEmptyTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#8e8e93",
+    marginBottom: 8,
+  },
+  ayahEmptyBody: {
+    fontSize: 14,
+    color: "#636366",
+    textAlign: "center",
+    lineHeight: 20,
   },
 });
