@@ -219,8 +219,11 @@ const styles = StyleSheet.create({
     // The wide measurerWrap guarantees no clamping.
   },
   clip: {
-    overflow: "hidden",
-    flex:     1,
+    overflow:       "hidden",
+    flex:           1,
+    // Extra vertical padding so text descenders and textShadow (radius 4, offset
+    // y+1) are never clipped by the overflow:hidden boundary.
+    paddingVertical: 4,
   },
   row: {
     flexDirection: "row",

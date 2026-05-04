@@ -62,6 +62,8 @@ interface SettingsPanelProps {
   onArabicFontScaleChange: (scale: ArabicFontScale) => void;
   onPlaybackSpeedChange: (speed: PlaybackSpeed) => void;
   onOpenCustomBgEditor: () => void;
+  /** Called once the close animation finishes AND the modal is unmounted. */
+  onFullyClosed?: () => void;
 }
 
 const SLEEP_OPTIONS: { label: string; shortLabel: string; minutes: number | null }[] = [
@@ -99,6 +101,7 @@ export function SettingsPanel({
   onArabicFontScaleChange,
   onPlaybackSpeedChange,
   onOpenCustomBgEditor,
+  onFullyClosed,
 }: SettingsPanelProps) {
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -110,9 +113,11 @@ export function SettingsPanel({
   const dragY = useRef(new Animated.Value(0)).current;
   const fade = useRef(new Animated.Value(0)).current;
 
-  // Keep onClose stable for the PanResponder closure
+  // Keep callbacks stable for closures (PanResponder + animation callbacks).
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const onFullyClosedRef = useRef(onFullyClosed);
+  onFullyClosedRef.current = onFullyClosed;
 
   const swipePan = useRef(
     PanResponder.create({
@@ -170,7 +175,10 @@ export function SettingsPanel({
           useNativeDriver: true,
         }),
       ]).start(({ finished }) => {
-        if (finished) setMounted(false);
+        if (finished) {
+          setMounted(false);
+          onFullyClosedRef.current?.();
+        }
       });
     }
   }, [open, sheetHeight, slide, dragY, fade, mounted]);

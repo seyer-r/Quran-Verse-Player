@@ -149,6 +149,9 @@ export default function PlayerScreen() {
   const [audioError, setAudioError] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [customBgEditorOpen, setCustomBgEditorOpen] = useState(false);
+  // Tracks whether the CustomBackgroundEditor should open once SettingsPanel
+  // has fully unmounted. Using a ref avoids stale-closure issues in callbacks.
+  const pendingCustomBgEditor = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reciterSheetOpen, setReciterSheetOpen] = useState(false);
   const [verseMenuVisible, setVerseMenuVisible] = useState(false);
@@ -1877,11 +1880,19 @@ export default function PlayerScreen() {
         playbackSpeed={settings.playbackSpeed}
         onPlaybackSpeedChange={setPlaybackSpeed}
         onOpenCustomBgEditor={() => {
+          // Signal that we want the editor to open, then start closing settings.
+          // onFullyClosed (below) will actually open it once the modal is gone.
+          pendingCustomBgEditor.current = true;
           setSettingsOpen(false);
-          // Delay opening until the settings sheet close animation (320ms)
-          // has finished. Presenting a new native Modal while the previous
-          // one is still in its animated dismiss causes a freeze on iOS/Android.
-          setTimeout(() => setCustomBgEditorOpen(true), 380);
+        }}
+        onFullyClosed={() => {
+          // SettingsPanel's close animation is done AND setMounted(false) has
+          // been called. Give React + the native modal stack one extra frame to
+          // fully remove the previous Modal before presenting the new one.
+          if (pendingCustomBgEditor.current) {
+            pendingCustomBgEditor.current = false;
+            setTimeout(() => setCustomBgEditorOpen(true), 50);
+          }
         }}
       />
 
