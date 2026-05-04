@@ -1,3 +1,4 @@
+import { AudioBars } from "@/components/AudioBars";
 import { SymbolIcon } from "@/components/SymbolIcon";
 import { SurahNameGlyph } from "@/components/SurahNameGlyph";
 import * as Haptics from "expo-haptics";
@@ -1710,6 +1711,7 @@ export default function PlayerScreen() {
               hitSlop={6}
             >
               <View style={styles.reciterEyebrowRow}>
+                <AudioBars playing={isPlaying} />
                 <Text style={[styles.reciterEyebrow, secondaryOverride]}>Reciter</Text>
               </View>
               <View style={styles.reciterNameRow}>
