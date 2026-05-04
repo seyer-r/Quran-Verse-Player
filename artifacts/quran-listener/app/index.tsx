@@ -1878,7 +1878,10 @@ export default function PlayerScreen() {
         onPlaybackSpeedChange={setPlaybackSpeed}
         onOpenCustomBgEditor={() => {
           setSettingsOpen(false);
-          setCustomBgEditorOpen(true);
+          // Delay opening until the settings sheet close animation (320ms)
+          // has finished. Presenting a new native Modal while the previous
+          // one is still in its animated dismiss causes a freeze on iOS/Android.
+          setTimeout(() => setCustomBgEditorOpen(true), 380);
         }}
       />
 

@@ -79,18 +79,21 @@ export function MarqueeText({ children, style }: Props) {
 
     animRef.current = Animated.loop(
       Animated.sequence([
-        Animated.delay(INITIAL_DELAY_MS),
+        // Use the `delay` option on Animated.timing instead of Animated.delay().
+        // Animated.delay() internally uses useNativeDriver:false which breaks
+        // native-driver animation sequences on iOS/Android.
         Animated.timing(translateX, {
           toValue:         -travel,
           duration:        scrollDuration,
+          delay:           INITIAL_DELAY_MS,
           easing:          Easing.linear,
           useNativeDriver: true,
         }),
-        Animated.delay(LOOP_PAUSE_MS),
         // Instant reset — second copy is now exactly where first was → seamless.
         Animated.timing(translateX, {
           toValue:         0,
           duration:        1,
+          delay:           LOOP_PAUSE_MS,
           useNativeDriver: true,
         }),
       ]),
