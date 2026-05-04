@@ -219,11 +219,13 @@ const styles = StyleSheet.create({
     // The wide measurerWrap guarantees no clamping.
   },
   clip: {
-    overflow:       "hidden",
-    flex:           1,
-    // Extra vertical padding so text descenders and textShadow (radius 4, offset
-    // y+1) are never clipped by the overflow:hidden boundary.
-    paddingVertical: 4,
+    overflow: "hidden",
+    // DO NOT use flex:1 here. On native (Yoga), flex:1 = flexBasis:0 which
+    // collapses the view to 0 height when the parent has no explicit height.
+    // On web, CSS min-height:auto prevents this, so the bug is web-invisible.
+    // Without flex:1, Yoga sizes clip to its content height (the text) and
+    // stretches it to parent width via the default alignSelf:"stretch".
+    paddingVertical: 4, // room for text descenders + textShadow bleed
   },
   row: {
     flexDirection: "row",
