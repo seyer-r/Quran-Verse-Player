@@ -1,21 +1,17 @@
 /**
  * CustomBackgroundEditor
  *
- * Full-screen modal that lets the user pick a photo or video from their
- * device library and position it behind the Quran verse text.
+ * Full-screen modal where the user picks a photo/video and repositions it
+ * inside a plain preview rectangle.
  *
  * Layout:
  *   [Cancel]   Adjust Background   [Set]
  *
- *          ┌─────────────────┐
- *          │ ●●●         9:41│  ← status bar
- *          │   ⬛⬛⬛⬛⬛   │  ← dynamic island
- *          │                 │
- *          │  <Arabic text>  │  ← sample verse overlay
- *          │  <translation>  │
- *          │                 │
- *          │    ── ▶ ──      │  ← mini controls
- *          └─────────────────┘
+ *   ┌───────────────────────────────────┐
+ *   │                                   │
+ *   │        (image / placeholder)      │
+ *   │                                   │
+ *   └───────────────────────────────────┘
  *   Drag to reposition · Pinch or scroll to zoom
  *
  *   ┌──────────────────────────────────┐
@@ -24,15 +20,12 @@
  *   │  🎬  Choose Video        ›       │
  *   └──────────────────────────────────┘
  *
- * Gesture handling:
- *   • Single-touch drag  → pan the background inside the mockup
- *   • Two-touch pinch    → zoom (scale ≥ 1; image always fills frame)
- *   • Mouse wheel (web)  → zoom
- *   • Spring snap-back   → if scale < 1 or image would expose empty space
- *
- * Transform persistence:
- *   Offsets are stored as fractions of the screen so the composition
- *   looks identical at any screen size (see CustomBg in useSettings.ts).
+ * Gesture note:
+ *   The modal uses presentationStyle="fullScreen" on iOS (no pull-to-dismiss
+ *   handle). This is intentional — Apple's own image-editing UIs (Photos,
+ *   Procreate, Keynote canvas) do the same: editing screens are fullScreen so
+ *   the dismiss gesture never conflicts with canvas pan gestures. The user
+ *   taps Cancel to exit. On Android the modal is always fullScreen.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -54,14 +47,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SymbolIcon } from "@/components/SymbolIcon";
 import type { CustomBg } from "@/lib/useSettings";
 
-const PHONE_RADIUS = 44;
-const SCREEN_RADIUS = 40;
-const PHONE_PADDING = 4;
-const HOME_BAR_AREA = 30;
-
-const SAMPLE_ARABIC = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
-const SAMPLE_TRANSLATION =
-  "In the name of Allah, the Entirely Merciful, the Especially Merciful.";
+const CANVAS_RADIUS = 14;
+const CANVAS_ASPECT = 19.5 / 9; // portrait — matches the actual app screen ratio
 
 interface Props {
   open: boolean;
@@ -86,7 +73,7 @@ export function CustomBackgroundEditor({
   );
   const [picking, setPicking] = useState(false);
 
-  // ── ALL refs declared before any effect (React Compiler requirement) ──────
+  // ── ALL refs declared before any effect ───────────────────────────────────
   const draftUriRef = useRef<string | null>(null);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const translateXAnim = useRef(new Animated.Value(0)).current;
@@ -103,38 +90,32 @@ export function CustomBackgroundEditor({
     lastTx: 0,
     lastTy: 0,
   });
-  // Updated unconditionally each render so PanResponder closures always
-  // read the latest values — same pattern used by SettingsPanel / SurahPicker.
   const clampRef = useRef<
-    (
-      s: number,
-      x: number,
-      y: number,
-    ) => { scale: number; tx: number; ty: number }
+    (s: number, x: number, y: number) => { scale: number; tx: number; ty: number }
   >((s, x, y) => ({ scale: s, tx: x, ty: y }));
-  const mockupDimsRef = useRef({ w: 0, h: 0 });
+  const canvasDimsRef = useRef({ w: 0, h: 0 });
 
-  // ── Mockup dimensions (computed from available space) ─────────────────────
+  // ── Canvas dimensions ──────────────────────────────────────────────────────
+  // NAV_H + instruction + picker card + safe areas = ~232px fixed chrome.
+  // The remainder is available for the canvas.
   const NAV_H = 56;
-  const BOTTOM_H = 168 + insets.bottom; // instruction + picker card
-  const availH =
-    sh - insets.top - NAV_H - BOTTOM_H - 16;
-  const availW = sw - 40;
-  const ASPECT = 19.5 / 9;
-  let mH = Math.min(Math.max(availH, 280), 540);
-  let mW = mH / ASPECT;
+  const BOTTOM_CHROME = 40 + 120 + insets.bottom + 20; // hint + card + padding
+  const availH = sh - (Platform.OS === "ios" ? 0 : insets.top) - NAV_H - BOTTOM_CHROME - 16;
+  const availW = sw - 40; // 20px side padding each side
+  let mH = Math.min(Math.max(availH, 240), 520);
+  let mW = mH / CANVAS_ASPECT;
   if (mW > availW) {
     mW = availW;
-    mH = mW * ASPECT;
+    mH = mW * CANVAS_ASPECT;
   }
 
   // ── Sync live refs each render ────────────────────────────────────────────
   draftUriRef.current = draftUri;
-  mockupDimsRef.current = { w: mW, h: mH };
+  canvasDimsRef.current = { w: mW, h: mH };
   clampRef.current = (scale, tx, ty) => {
     const cs = Math.max(1.0, scale);
-    const maxTx = ((cs - 1) / 2) * mockupDimsRef.current.w;
-    const maxTy = ((cs - 1) / 2) * mockupDimsRef.current.h;
+    const maxTx = ((cs - 1) / 2) * canvasDimsRef.current.w;
+    const maxTy = ((cs - 1) / 2) * canvasDimsRef.current.h;
     return {
       scale: cs,
       tx: Math.max(-maxTx, Math.min(maxTx, tx)),
@@ -142,19 +123,22 @@ export function CustomBackgroundEditor({
     };
   };
 
-  // ── PanResponder (created once; reads live refs) ──────────────────────────
+  // ── PanResponder ──────────────────────────────────────────────────────────
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => draftUriRef.current !== null,
       onMoveShouldSetPanResponder: () => draftUriRef.current !== null,
+      // Capture prevents the parent modal dismiss gesture from competing.
+      onStartShouldSetPanResponderCapture: () => draftUriRef.current !== null,
+      onMoveShouldSetPanResponderCapture: () => draftUriRef.current !== null,
       onPanResponderGrant: (evt) => {
         const g = gestureRef.current;
         g.startScale = currentScaleRef.current;
-        g.startTx = currentTxRef.current;
-        g.startTy = currentTyRef.current;
-        g.lastScale = currentScaleRef.current;
-        g.lastTx = currentTxRef.current;
-        g.lastTy = currentTyRef.current;
+        g.startTx    = currentTxRef.current;
+        g.startTy    = currentTyRef.current;
+        g.lastScale  = currentScaleRef.current;
+        g.lastTx     = currentTxRef.current;
+        g.lastTy     = currentTyRef.current;
         const t = evt.nativeEvent.touches;
         if (t && t.length >= 2) {
           const dx = t[1].pageX - t[0].pageX;
@@ -166,12 +150,12 @@ export function CustomBackgroundEditor({
         const g = gestureRef.current;
         const t = evt.nativeEvent.touches;
         if (t && t.length >= 2) {
-          const dx = t[1].pageX - t[0].pageX;
-          const dy = t[1].pageY - t[0].pageY;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const newScale = Math.max(0.3, g.startScale * (dist / g.startDist));
-          scaleAnim.setValue(newScale);
-          g.lastScale = newScale;
+          const dx    = t[1].pageX - t[0].pageX;
+          const dy    = t[1].pageY - t[0].pageY;
+          const dist  = Math.sqrt(dx * dx + dy * dy) || 1;
+          const newSc = Math.max(0.3, g.startScale * (dist / g.startDist));
+          scaleAnim.setValue(newSc);
+          g.lastScale = newSc;
         } else {
           const newTx = g.startTx + s.dx;
           const newTy = g.startTy + s.dy;
@@ -182,96 +166,79 @@ export function CustomBackgroundEditor({
         }
       },
       onPanResponderRelease: () => {
-        const g = gestureRef.current;
+        const g       = gestureRef.current;
         const clamped = clampRef.current(g.lastScale, g.lastTx, g.lastTy);
-        const needsSpring =
+        const needs   =
           clamped.scale !== g.lastScale ||
-          clamped.tx !== g.lastTx ||
-          clamped.ty !== g.lastTy;
-        if (needsSpring) {
+          clamped.tx    !== g.lastTx    ||
+          clamped.ty    !== g.lastTy;
+        if (needs) {
           Animated.parallel([
-            Animated.spring(scaleAnim, {
-              toValue: clamped.scale,
-              useNativeDriver: true,
-              tension: 200,
-              friction: 22,
-            }),
-            Animated.spring(translateXAnim, {
-              toValue: clamped.tx,
-              useNativeDriver: true,
-              tension: 200,
-              friction: 22,
-            }),
-            Animated.spring(translateYAnim, {
-              toValue: clamped.ty,
-              useNativeDriver: true,
-              tension: 200,
-              friction: 22,
-            }),
+            Animated.spring(scaleAnim,      { toValue: clamped.scale, useNativeDriver: true, tension: 200, friction: 22 }),
+            Animated.spring(translateXAnim, { toValue: clamped.tx,    useNativeDriver: true, tension: 200, friction: 22 }),
+            Animated.spring(translateYAnim, { toValue: clamped.ty,    useNativeDriver: true, tension: 200, friction: 22 }),
           ]).start();
         }
         currentScaleRef.current = clamped.scale;
-        currentTxRef.current = clamped.tx;
-        currentTyRef.current = clamped.ty;
+        currentTxRef.current    = clamped.tx;
+        currentTyRef.current    = clamped.ty;
         g.lastScale = clamped.scale;
-        g.lastTx = clamped.tx;
-        g.lastTy = clamped.ty;
+        g.lastTx    = clamped.tx;
+        g.lastTy    = clamped.ty;
       },
       onPanResponderTerminate: () => {
         const g = gestureRef.current;
         currentScaleRef.current = g.lastScale;
-        currentTxRef.current = g.lastTx;
-        currentTyRef.current = g.lastTy;
+        currentTxRef.current    = g.lastTx;
+        currentTyRef.current    = g.lastTy;
       },
     }),
   ).current;
 
-  // ── Effect: load / reset transform when editor opens ─────────────────────
+  // ── Effect: load / reset when editor opens ────────────────────────────────
   useEffect(() => {
     if (!open) return;
     if (current) {
-      const pixelTx = current.normalizedTx * mockupDimsRef.current.w;
-      const pixelTy = current.normalizedTy * mockupDimsRef.current.h;
+      const pixelTx = current.normalizedTx * canvasDimsRef.current.w;
+      const pixelTy = current.normalizedTy * canvasDimsRef.current.h;
       setDraftUri(current.uri);
       setDraftMediaType(current.mediaType);
       scaleAnim.setValue(current.scale);
       translateXAnim.setValue(pixelTx);
       translateYAnim.setValue(pixelTy);
       currentScaleRef.current = current.scale;
-      currentTxRef.current = pixelTx;
-      currentTyRef.current = pixelTy;
+      currentTxRef.current    = pixelTx;
+      currentTyRef.current    = pixelTy;
       gestureRef.current.lastScale = current.scale;
-      gestureRef.current.lastTx = pixelTx;
-      gestureRef.current.lastTy = pixelTy;
+      gestureRef.current.lastTx    = pixelTx;
+      gestureRef.current.lastTy    = pixelTy;
     } else {
       setDraftUri(null);
       scaleAnim.setValue(1);
       translateXAnim.setValue(0);
       translateYAnim.setValue(0);
       currentScaleRef.current = 1;
-      currentTxRef.current = 0;
-      currentTyRef.current = 0;
-      const g = gestureRef.current;
-      g.lastScale = 1;
-      g.lastTx = 0;
-      g.lastTy = 0;
+      currentTxRef.current    = 0;
+      currentTyRef.current    = 0;
+      gestureRef.current.lastScale = 1;
+      gestureRef.current.lastTx    = 0;
+      gestureRef.current.lastTy    = 0;
     }
   }, [open, current, scaleAnim, translateXAnim, translateYAnim]);
 
-  // ── Effect: mouse wheel zoom (web only) ───────────────────────────────────
+  // ── Effect: mouse-wheel zoom (web only) ───────────────────────────────────
   useEffect(() => {
     if (Platform.OS !== "web" || !open) return;
     const handleWheel = (e: Event) => {
-      const we = e as WheelEvent;
+      const we    = e as WheelEvent;
       we.preventDefault();
-      const delta = we.deltaY < 0 ? 0.09 : -0.09;
-      const newRaw = currentScaleRef.current + delta;
-      const newScale = Math.max(0.3, newRaw);
+      const delta    = we.deltaY < 0 ? 0.09 : -0.09;
+      const newScale = Math.max(0.3, currentScaleRef.current + delta);
       scaleAnim.setValue(newScale);
       gestureRef.current.lastScale = newScale;
-      currentScaleRef.current = newScale;
+      currentScaleRef.current      = newScale;
     };
-    const el = document.getElementById("cbg-mockup-screen");
+    const el = document.getElementById("cbg-canvas");
     if (el) {
       el.addEventListener("wheel", handleWheel, { passive: false });
       return () => el.removeEventListener("wheel", handleWheel);
@@ -284,24 +251,19 @@ export function CustomBackgroundEditor({
     translateXAnim.setValue(0);
     translateYAnim.setValue(0);
     currentScaleRef.current = 1;
-    currentTxRef.current = 0;
-    currentTyRef.current = 0;
-    const g = gestureRef.current;
-    g.lastScale = 1;
-    g.lastTx = 0;
-    g.lastTy = 0;
+    currentTxRef.current    = 0;
+    currentTyRef.current    = 0;
+    gestureRef.current.lastScale = 1;
+    gestureRef.current.lastTx    = 0;
+    gestureRef.current.lastTy    = 0;
   }, [scaleAnim, translateXAnim, translateYAnim]);
 
   const pickImage = useCallback(async () => {
     setPicking(true);
     try {
       if (Platform.OS !== "web") {
-        const { status } =
-          await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") {
-          setPicking(false);
-          return;
-        }
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") { setPicking(false); return; }
       }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"] as unknown as ImagePicker.MediaTypeOptions,
@@ -310,9 +272,6 @@ export function CustomBackgroundEditor({
       });
       if (!result.canceled && result.assets[0]) {
         let uri = result.assets[0].uri;
-        // On web, expo-image-picker returns a blob: URL which does not survive
-        // a page reload. Convert to a base64 data URL for persistence (capped
-        // at 4 MB to avoid saturating AsyncStorage).
         if (Platform.OS === "web" && uri.startsWith("blob:")) {
           try {
             const resp = await fetch(uri);
@@ -320,15 +279,12 @@ export function CustomBackgroundEditor({
             if (blob.size < 4_000_000) {
               uri = await new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
-                reader.onload = () => resolve(reader.result as string);
+                reader.onload  = () => resolve(reader.result as string);
                 reader.onerror = reject;
                 reader.readAsDataURL(blob);
               });
             }
-            // If > 4 MB keep the blob URL (session-only, acceptable trade-off)
-          } catch {
-            // keep original blob URL
-          }
+          } catch { /* keep blob URL */ }
         }
         setDraftUri(uri);
         setDraftMediaType("image");
@@ -343,12 +299,8 @@ export function CustomBackgroundEditor({
     setPicking(true);
     try {
       if (Platform.OS !== "web") {
-        const { status } =
-          await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") {
-          setPicking(false);
-          return;
-        }
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") { setPicking(false); return; }
       }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["videos"] as unknown as ImagePicker.MediaTypeOptions,
@@ -368,16 +320,12 @@ export function CustomBackgroundEditor({
 
   const handleApply = useCallback(() => {
     if (!draftUri) return;
-    const clamped = clampRef.current(
-      currentScaleRef.current,
-      currentTxRef.current,
-      currentTyRef.current,
-    );
-    const { w, h } = mockupDimsRef.current;
+    const clamped   = clampRef.current(currentScaleRef.current, currentTxRef.current, currentTyRef.current);
+    const { w, h }  = canvasDimsRef.current;
     onApply({
-      uri: draftUri,
-      mediaType: draftMediaType,
-      scale: clamped.scale,
+      uri:          draftUri,
+      mediaType:    draftMediaType,
+      scale:        clamped.scale,
       normalizedTx: w > 0 ? clamped.tx / w : 0,
       normalizedTy: h > 0 ? clamped.ty / h : 0,
     });
@@ -385,24 +333,21 @@ export function CustomBackgroundEditor({
 
   const hasMedia = draftUri !== null;
 
-  // Font sizes that scale with mockup width
-  const arabicFs = Math.max(16, mW * 0.13);
-  const translationFs = Math.max(8, mW * 0.052);
-  const eyebrowFs = Math.max(7, mW * 0.046);
-  const playBtnSize = Math.max(18, mW * 0.14);
-
   return (
     <Modal
       visible={open}
+      // fullScreen on iOS removes the pull-to-dismiss handle that conflicts
+      // with pan gestures on the canvas. This matches Apple's Photos/Keynote
+      // editing pattern — use Cancel to exit deliberately.
       animationType="slide"
-      presentationStyle={Platform.OS === "ios" ? "pageSheet" : "fullScreen"}
+      presentationStyle="fullScreen"
       onRequestClose={onClose}
       statusBarTranslucent={Platform.OS === "android"}
     >
       <View
         style={[
           styles.container,
-          { paddingTop: Platform.OS === "ios" ? 0 : insets.top },
+          { paddingTop: Platform.OS === "ios" ? insets.top : insets.top },
         ]}
       >
         {/* ── Navigation bar ─────────────────────────────────────────── */}
@@ -433,201 +378,102 @@ export function CustomBackgroundEditor({
           </TouchableOpacity>
         </View>
 
-        {/* ── Mockup area ───────────────────────────────────────────── */}
-        <View style={styles.mockupArea}>
-          {/* Phone body */}
+        {/* ── Canvas area ───────────────────────────────────────────── */}
+        <View style={styles.canvasArea}>
           <View
+            nativeID="cbg-canvas"
             style={[
-              styles.phoneBody,
-              {
-                width: mW + PHONE_PADDING * 2,
-                height: mH + PHONE_PADDING + HOME_BAR_AREA,
-                borderRadius: PHONE_RADIUS,
-              },
+              styles.canvas,
+              { width: mW, height: mH },
               Platform.OS === "web"
-                ? ({ boxShadow: "0 28px 80px rgba(0,0,0,0.9)" } as object)
+                ? ({ boxShadow: "0 20px 60px rgba(0,0,0,0.85)" } as object)
                 : {
                     shadowColor: "#000",
-                    shadowOpacity: 0.9,
-                    shadowRadius: 40,
-                    shadowOffset: { width: 0, height: 20 },
-                    elevation: 40,
+                    shadowOpacity: 0.85,
+                    shadowRadius: 32,
+                    shadowOffset: { width: 0, height: 14 },
+                    elevation: 32,
                   },
             ]}
+            {...panResponder.panHandlers}
           >
-            {/* Screen */}
-            <View
-              nativeID="cbg-mockup-screen"
-              style={[
-                styles.screen,
-                {
-                  width: mW,
-                  height: mH,
-                  borderRadius: SCREEN_RADIUS,
-                  marginTop: PHONE_PADDING,
-                  marginHorizontal: PHONE_PADDING,
-                },
-              ]}
-              {...panResponder.panHandlers}
-            >
-              {/* Dynamic island */}
-              <View style={styles.dynamicIsland} pointerEvents="none" />
-
-              {/* ── Background media with transform ───────────────── */}
-              {hasMedia && (
-                <Animated.View
-                  style={[
-                    StyleSheet.absoluteFill,
-                    {
-                      transform: [
-                        { scale: scaleAnim },
-                        { translateX: translateXAnim },
-                        { translateY: translateYAnim },
-                      ],
-                    },
-                  ]}
-                  pointerEvents="none"
-                >
-                  {draftMediaType === "image" || Platform.OS !== "web" ? (
-                    <Image
-                      source={{ uri: draftUri! }}
-                      style={StyleSheet.absoluteFill}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    // Web video preview
-                    <View style={StyleSheet.absoluteFill}>
-                      {React.createElement("video", {
-                        src: draftUri,
-                        autoPlay: true,
-                        loop: true,
-                        muted: true,
-                        playsInline: true,
-                        controls: false,
-                        style: {
-                          position: "absolute" as const,
-                          top: 0,
-                          left: 0,
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover" as const,
-                          pointerEvents: "none" as const,
-                        },
-                      })}
-                    </View>
-                  )}
-                </Animated.View>
-              )}
-
-              {/* Placeholder when no media */}
-              {!hasMedia && (
-                <View style={styles.placeholder} pointerEvents="none">
-                  <View style={styles.placeholderGlow}>
-                    <SymbolIcon
-                      name="photo.on.rectangle"
-                      fallbackIonicon="images-outline"
-                      size={44}
-                      color="#4a4a4e"
-                    />
+            {/* Background media with transform */}
+            {hasMedia && (
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    transform: [
+                      { scale:      scaleAnim      },
+                      { translateX: translateXAnim  },
+                      { translateY: translateYAnim  },
+                    ],
+                  },
+                ]}
+                pointerEvents="none"
+              >
+                {draftMediaType === "image" || Platform.OS !== "web" ? (
+                  <Image
+                    source={{ uri: draftUri! }}
+                    style={StyleSheet.absoluteFill}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={StyleSheet.absoluteFill}>
+                    {React.createElement("video", {
+                      src: draftUri,
+                      autoPlay: true,
+                      loop: true,
+                      muted: true,
+                      playsInline: true,
+                      controls: false,
+                      style: {
+                        position: "absolute" as const,
+                        top: 0, left: 0,
+                        width: "100%", height: "100%",
+                        objectFit: "cover" as const,
+                        pointerEvents: "none" as const,
+                      },
+                    })}
                   </View>
-                  <Text style={styles.placeholderText}>
-                    Your chosen image or video{"\n"}will appear here
-                  </Text>
-                  <Text style={styles.placeholderHint}>
-                    Tap Choose Photo or Video below
-                  </Text>
+                )}
+              </Animated.View>
+            )}
+
+            {/* Subtle edge vignette when media present */}
+            {hasMedia && (
+              <LinearGradient
+                colors={[
+                  "rgba(0,0,0,0.28)",
+                  "transparent",
+                  "transparent",
+                  "rgba(0,0,0,0.28)",
+                ]}
+                locations={[0, 0.25, 0.75, 1]}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+            )}
+
+            {/* Placeholder when no media selected */}
+            {!hasMedia && (
+              <View style={styles.placeholder} pointerEvents="none">
+                <View style={styles.placeholderGlow}>
+                  <SymbolIcon
+                    name="photo.on.rectangle"
+                    fallbackIonicon="images-outline"
+                    size={40}
+                    color="#4a4a4e"
+                  />
                 </View>
-              )}
-
-              {/* Scrim */}
-              {hasMedia && (
-                <LinearGradient
-                  colors={[
-                    "rgba(0,0,0,0.42)",
-                    "rgba(0,0,0,0.16)",
-                    "rgba(0,0,0,0.40)",
-                    "rgba(0,0,0,0.72)",
-                  ]}
-                  locations={[0, 0.35, 0.65, 1]}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                />
-              )}
-
-              {/* Content overlay — Arabic text preview */}
-              {hasMedia && (
-                <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                  {/* Status bar row */}
-                  <View style={styles.statusRow}>
-                    <Text style={styles.statusTime}>9:41</Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <SymbolIcon name="wifi" fallbackIonicon="wifi" size={8} color="rgba(255,255,255,0.8)" />
-                      <SymbolIcon name="battery.100" fallbackIonicon="battery-full" size={9} color="rgba(255,255,255,0.8)" />
-                    </View>
-                  </View>
-
-                  {/* Surah eyebrow */}
-                  <Text
-                    style={[styles.previewEyebrow, { fontSize: eyebrowFs }]}
-                    numberOfLines={1}
-                  >
-                    Surah 1 — Al-Fātiḥa
-                  </Text>
-
-                  {/* Arabic + translation */}
-                  <View style={styles.previewTextWrap}>
-                    <Text
-                      style={[
-                        styles.previewArabic,
-                        { fontSize: arabicFs, lineHeight: arabicFs * 1.65 },
-                      ]}
-                      numberOfLines={3}
-                    >
-                      {SAMPLE_ARABIC}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.previewTranslation,
-                        {
-                          fontSize: translationFs,
-                          lineHeight: translationFs * 1.5,
-                        },
-                      ]}
-                      numberOfLines={3}
-                    >
-                      {SAMPLE_TRANSLATION}
-                    </Text>
-                  </View>
-
-                  {/* Mini footer controls */}
-                  <View style={styles.previewFooter}>
-                    <View style={styles.previewProgressBar}>
-                      <View
-                        style={[styles.previewProgressFill, { width: "32%" }]}
-                      />
-                    </View>
-                    <View style={styles.previewControlsRow}>
-                      <View
-                        style={[
-                          styles.previewPlayBtn,
-                          {
-                            width: playBtnSize,
-                            height: playBtnSize,
-                            borderRadius: playBtnSize / 2,
-                          },
-                        ]}
-                      />
-                    </View>
-                    <View style={styles.previewHomeBar} />
-                  </View>
-                </View>
-              )}
-            </View>
-
-            {/* Home indicator at phone body bottom */}
-            <View style={styles.homeBarRow} pointerEvents="none">
-              <View style={styles.homeBar} />
-            </View>
+                <Text style={styles.placeholderText}>
+                  Your photo or video{"\n"}will appear here
+                </Text>
+                <Text style={styles.placeholderHint}>
+                  Choose one below to get started
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -637,9 +483,7 @@ export function CustomBackgroundEditor({
         </Text>
 
         {/* ── Media picker card ─────────────────────────────────────── */}
-        <View
-          style={[styles.pickerCard, { marginBottom: insets.bottom + 20 }]}
-        >
+        <View style={[styles.pickerCard, { marginBottom: insets.bottom + 20 }]}>
           <TouchableOpacity
             onPress={pickImage}
             activeOpacity={0.65}
@@ -652,12 +496,7 @@ export function CustomBackgroundEditor({
               size={19}
               color={picking ? "#3a3a3c" : "#e8c078"}
             />
-            <Text
-              style={[
-                styles.pickerRowLabel,
-                picking && styles.pickerRowLabelDim,
-              ]}
-            >
+            <Text style={[styles.pickerRowLabel, picking && styles.pickerRowLabelDim]}>
               Choose Photo
             </Text>
             <SymbolIcon
@@ -680,12 +519,7 @@ export function CustomBackgroundEditor({
               size={19}
               color={picking ? "#3a3a3c" : "#e8c078"}
             />
-            <Text
-              style={[
-                styles.pickerRowLabel,
-                picking && styles.pickerRowLabelDim,
-              ]}
-            >
+            <Text style={[styles.pickerRowLabel, picking && styles.pickerRowLabelDim]}>
               Choose Video
             </Text>
             <SymbolIcon
@@ -744,32 +578,19 @@ const styles = StyleSheet.create({
     opacity: 0,
   },
 
-  // ── Mockup ─────────────────────────────────────────────────────────────────
-  mockupArea: {
+  // ── Canvas ─────────────────────────────────────────────────────────────────
+  canvasArea: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  phoneBody: {
-    backgroundColor: "#1a1a1c",
-    alignItems: "center",
-  },
-  screen: {
+  canvas: {
+    borderRadius: CANVAS_RADIUS,
     overflow: "hidden",
-    backgroundColor: "#000",
-  },
-  dynamicIsland: {
-    position: "absolute",
-    top: 10,
-    alignSelf: "center",
-    width: 110,
-    height: 32,
-    borderRadius: 18,
-    backgroundColor: "#000",
-    zIndex: 10,
+    backgroundColor: "#111",
   },
 
-  // Placeholder (no media selected)
+  // ── Placeholder ────────────────────────────────────────────────────────────
   placeholder: {
     flex: 1,
     alignItems: "center",
@@ -777,139 +598,33 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   placeholderGlow: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(232,192,120,0.04)",
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: "rgba(232,192,120,0.05)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 4,
   },
   placeholderText: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#4a4a4e",
     textAlign: "center",
-    lineHeight: 18,
+    lineHeight: 19,
   },
   placeholderHint: {
-    fontSize: 10,
+    fontSize: 11,
     color: "#2e2e30",
     textAlign: "center",
     marginTop: 2,
-  },
-
-  // Status bar inside mockup
-  statusRow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 50,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingHorizontal: 18,
-    paddingBottom: 6,
-  },
-  statusTime: {
-    flex: 1,
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#fff",
-    letterSpacing: -0.2,
-  },
-  statusIcons: {
-    fontSize: 7,
-    color: "rgba(255,255,255,0.55)",
-    letterSpacing: 2,
-  },
-
-  // Arabic preview
-  previewEyebrow: {
-    position: "absolute",
-    top: 56,
-    left: 0,
-    right: 0,
-    textAlign: "center",
-    color: "rgba(255,255,255,0.55)",
-    fontWeight: "400",
-    letterSpacing: 0.1,
-  },
-  previewTextWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: "30%",
-    paddingHorizontal: "6%",
-    alignItems: "center",
-  },
-  previewArabic: {
-    color: "#ffffff",
-    fontWeight: "400",
-    textAlign: "center",
-    writingDirection: "rtl",
-  },
-  previewTranslation: {
-    color: "rgba(255,255,255,0.72)",
-    textAlign: "center",
-    marginTop: 6,
-  },
-
-  // Mini footer preview
-  previewFooter: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: "5%",
-    paddingBottom: 4,
-    gap: 6,
-  },
-  previewProgressBar: {
-    height: 2,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    borderRadius: 1,
-    overflow: "hidden",
-  },
-  previewProgressFill: {
-    height: 2,
-    backgroundColor: "#e8c078",
-    borderRadius: 1,
-  },
-  previewControlsRow: {
-    alignItems: "center",
-    paddingVertical: 2,
-  },
-  previewPlayBtn: {
-    backgroundColor: "rgba(255,255,255,0.82)",
-  },
-  previewHomeBar: {
-    alignSelf: "center",
-    width: 60,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    marginTop: 2,
-  },
-
-  // Phone body home bar
-  homeBarRow: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  homeBar: {
-    width: 100,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.18)",
   },
 
   // ── Instruction ────────────────────────────────────────────────────────────
   instruction: {
     textAlign: "center",
     fontSize: 13,
-    color: "#666",
-    paddingVertical: 10,
+    color: "#555",
+    paddingVertical: 12,
     letterSpacing: 0.1,
   },
 
@@ -923,18 +638,18 @@ const styles = StyleSheet.create({
   pickerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    gap: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    gap: 12,
   },
   pickerRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.07)",
+    borderBottomColor: "rgba(255,255,255,0.08)",
   },
   pickerRowLabel: {
     flex: 1,
-    fontSize: 17,
-    color: "#f5f5f5",
+    fontSize: 16,
+    color: "#e8e8e8",
     fontWeight: "400",
   },
   pickerRowLabelDim: {
