@@ -94,6 +94,9 @@ export function CustomBackgroundEditor({
     (s: number, x: number, y: number) => { scale: number; tx: number; ty: number }
   >((s, x, y) => ({ scale: s, tx: x, ty: y }));
   const canvasDimsRef = useRef({ w: 0, h: 0 });
+  // Tracks whether transform differs from identity — drives the Reset button.
+  const isDirtyRef       = useRef(false);
+  const resetBtnOpacity  = useRef(new Animated.Value(0)).current;
 
   // ── Canvas dimensions ──────────────────────────────────────────────────────
   // NAV_H + instruction + picker card + safe areas = ~232px fixed chrome.
@@ -185,6 +188,16 @@ export function CustomBackgroundEditor({
         g.lastScale = clamped.scale;
         g.lastTx    = clamped.tx;
         g.lastTy    = clamped.ty;
+        // Show/hide the Reset button based on whether transform is non-identity.
+        const dirty = Math.abs(clamped.scale - 1) > 0.01
+                   || Math.abs(clamped.tx) > 0.5
+                   || Math.abs(clamped.ty) > 0.5;
+        if (dirty !== isDirtyRef.current) {
+          isDirtyRef.current = dirty;
+          Animated.timing(resetBtnOpacity, {
+            toValue: dirty ? 1 : 0, duration: 220, useNativeDriver: true,
+          }).start();
+        }
       },
       onPanResponderTerminate: () => {
         const g = gestureRef.current;
@@ -256,7 +269,28 @@ export function CustomBackgroundEditor({
     gestureRef.current.lastScale = 1;
     gestureRef.current.lastTx    = 0;
     gestureRef.current.lastTy    = 0;
-  }, [scaleAnim, translateXAnim, translateYAnim]);
+    isDirtyRef.current = false;
+    resetBtnOpacity.setValue(0);
+  }, [scaleAnim, translateXAnim, translateYAnim, resetBtnOpacity]);
+
+  // Spring-animated reset — used by the Reset pill button.
+  const resetTransformAnimated = useCallback(() => {
+    Animated.parallel([
+      Animated.spring(scaleAnim,      { toValue: 1, useNativeDriver: true, tension: 180, friction: 18 }),
+      Animated.spring(translateXAnim, { toValue: 0, useNativeDriver: true, tension: 180, friction: 18 }),
+      Animated.spring(translateYAnim, { toValue: 0, useNativeDriver: true, tension: 180, friction: 18 }),
+    ]).start();
+    currentScaleRef.current = 1;
+    currentTxRef.current    = 0;
+    currentTyRef.current    = 0;
+    gestureRef.current.lastScale = 1;
+    gestureRef.current.lastTx    = 0;
+    gestureRef.current.lastTy    = 0;
+    isDirtyRef.current = false;
+    Animated.timing(resetBtnOpacity, {
+      toValue: 0, duration: 180, useNativeDriver: true,
+    }).start();
+  }, [scaleAnim, translateXAnim, translateYAnim, resetBtnOpacity]);
 
   const pickImage = useCallback(async () => {
     setPicking(true);
@@ -455,6 +489,28 @@ export function CustomBackgroundEditor({
               />
             )}
 
+            {/* Reset pill — fades in when transform is non-identity */}
+            {hasMedia && (
+              <Animated.View
+                style={[styles.resetWrap, { opacity: resetBtnOpacity }]}
+                pointerEvents="box-none"
+              >
+                <TouchableOpacity
+                  onPress={resetTransformAnimated}
+                  activeOpacity={0.72}
+                  style={styles.resetPill}
+                >
+                  <SymbolIcon
+                    name="arrow.counterclockwise"
+                    fallbackIonicon="refresh"
+                    size={12}
+                    color="rgba(255,255,255,0.88)"
+                  />
+                  <Text style={styles.resetPillText}>Reset</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            )}
+
             {/* Placeholder when no media selected */}
             {!hasMedia && (
               <View style={styles.placeholder} pointerEvents="none">
@@ -617,6 +673,32 @@ const styles = StyleSheet.create({
     color: "#2e2e30",
     textAlign: "center",
     marginTop: 2,
+  },
+
+  // ── Reset pill ─────────────────────────────────────────────────────────────
+  resetWrap: {
+    position:  "absolute",
+    bottom:    16,
+    left:      0,
+    right:     0,
+    alignItems: "center",
+  },
+  resetPill: {
+    flexDirection:   "row",
+    alignItems:      "center",
+    gap:             6,
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius:    20,
+    backgroundColor: "rgba(0,0,0,0.52)",
+    borderWidth:     StyleSheet.hairlineWidth,
+    borderColor:     "rgba(255,255,255,0.14)",
+  },
+  resetPillText: {
+    fontSize:      13,
+    fontWeight:    "500",
+    color:         "rgba(255,255,255,0.9)",
+    letterSpacing: -0.1,
   },
 
   // ── Instruction ────────────────────────────────────────────────────────────
