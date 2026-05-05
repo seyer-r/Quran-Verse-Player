@@ -42,27 +42,26 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { useVideoPlayer, VideoView } from "expo-video";
+import { Video, ResizeMode } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SymbolIcon } from "@/components/SymbolIcon";
 import type { CustomBg } from "@/lib/useSettings";
 
-// ── VideoPreview (native only) ─────────────────────────────────────────────
-// Dedicated component so useVideoPlayer (a hook) can be called unconditionally.
-// Key the element on the URI so the player is fully recreated when media changes.
-function VideoPreview({ uri }: { uri: string }) {
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop  = true;
-    p.muted = true;
-    p.play();
-  });
+// ── NativeVideoPreview (native only) ──────────────────────────────────────
+// Uses expo-av's Video component which is reliably included in Expo Go and
+// handles overflow:hidden / Animated parent transforms correctly on iOS.
+// expo-video (VideoView) uses a separate Metal compositing layer that can
+// fail to render inside Animated.View transforms on Expo Go SDK 54.
+function NativeVideoPreview({ uri }: { uri: string }) {
   return (
-    <VideoView
-      player={player}
+    <Video
+      source={{ uri }}
       style={StyleSheet.absoluteFill}
-      contentFit="cover"
-      nativeControls={false}
+      resizeMode={ResizeMode.COVER}
+      isLooping
+      isMuted
+      shouldPlay
     />
   );
 }
@@ -565,9 +564,9 @@ export function CustomBackgroundEditor({
                     })}
                   </View>
                 ) : (
-                  // ── Video (native) — expo-video, keyed on URI so the
+                  // ── Video (native) — expo-av, keyed on URI so the
                   //    player is fully recreated when the user picks a new clip.
-                  <VideoPreview key={draftUri} uri={draftUri!} />
+                  <NativeVideoPreview key={draftUri} uri={draftUri!} />
                 )}
               </Animated.View>
             )}

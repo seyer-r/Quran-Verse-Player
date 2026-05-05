@@ -1,5 +1,4 @@
 import React, {
-  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -16,22 +15,15 @@ import {
 } from "react-native";
 
 // ── Apple Music–style constants ──────────────────────────────────────────────
-// Measured against Apple Music 1.4 / iOS 17 mini-player:
-//   • Text sits still for ~1.2 s, then glides left at a comfortable pace.
-//   • After the last character scrolls off it pauses ~2 s before looping.
-//   • Speed is roughly 38 px/s on a 3× retina display (~12.7 pt/s).
-const INITIAL_DELAY_MS  = 1200;  // pause before first scroll
-const LOOP_PAUSE_MS     = 2000;  // pause after each full loop before restarting
-const PIXELS_PER_SECOND = 38;    // glide speed (px logical) — Apple Music ~38 px/s
-const GAP_PX            = 60;    // silent gap between the two text copies
-const FADE_WIDTH        = 14;    // gradient edge width in px — matches Apple Music
+const INITIAL_DELAY_MS  = 1200;
+const LOOP_PAUSE_MS     = 2000;
+const PIXELS_PER_SECOND = 38;
+const GAP_PX            = 60;
+const FADE_WIDTH        = 14;
 
-// Gradient mask applied as CSS mask-image (web only).
 const FADE_MASK = `linear-gradient(to right, transparent 0%, #000 ${FADE_WIDTH}px, #000 calc(100% - ${FADE_WIDTH}px), transparent 100%)`;
 
-// Upper bound for measurer container on native. Any realistic reciter name
-// fits in 2000 px at our font size, so onLayout will always report the true
-// natural text width rather than the parent's clamped width.
+// Any realistic reciter name at our font size fits within 2000 px.
 const MEASURER_MAX_W = 2000;
 
 type Props = {
@@ -48,11 +40,8 @@ export function MarqueeText({ children, style }: Props) {
   const overflows = containerW > 0 && naturalW > containerW;
 
   // ── Web text measurement ──────────────────────────────────────────────────
-  // React Native's StyleSheet normalizer strips non-standard CSS values like
-  // "max-content", so we cannot set width via the style prop.  Instead we
-  // temporarily append an off-screen <span> to measure the natural text width.
-  // This runs in useLayoutEffect (synchronous after DOM paint) so there is no
-  // visible flash.
+  // React Native's StyleSheet normalizer strips non-standard CSS values,
+  // so we append an off-screen <span> to measure the natural text width.
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
     const span = document.createElement("span");
@@ -71,21 +60,39 @@ export function MarqueeText({ children, style }: Props) {
     if (w > 0) setNaturalW(w);
   }, [children, style]);
 
-  // ── Animation ──────────────────────────────────────────────────────────────
-  const startAnim = useCallback(() => {
+  // ── Reset state when text changes (native) ────────────────────────────────
+  // Stop any running animation and clear the measured naturalW so the
+  // measurer's onTextLayout fires fresh for the new text.
+  useEffect(() => {
+    if (Platform.OS === "web") return;
     animRef.current?.stop();
     animRef.current = null;
     translateX.setValue(0);
-    if (!overflows) return;
+    setNaturalW(0);
+  }, [children, translateX]);
+
+  // ── Animation ─────────────────────────────────────────────────────────────
+  // NOTE: deliberately NOT wrapped in useCallback. The React Compiler
+  // (enabled in this project) can over-aggressively memoize useCallback,
+  // causing the stale closure (overflows=false) to persist after measurement
+  // fires and overflows becomes true. Inlining the logic here ensures the
+  // effect always re-runs with fresh values when deps change.
+  useEffect(() => {
+    if (!overflows) {
+      animRef.current?.stop();
+      animRef.current = null;
+      translateX.setValue(0);
+      return;
+    }
 
     const travel         = naturalW + GAP_PX;
     const scrollDuration = (travel / PIXELS_PER_SECOND) * 1000;
 
-    animRef.current = Animated.loop(
+    const anim = Animated.loop(
       Animated.sequence([
         // Use the `delay` option on Animated.timing instead of Animated.delay().
-        // Animated.delay() internally uses useNativeDriver:false which breaks
-        // native-driver animation sequences on iOS/Android.
+        // Animated.delay() uses useNativeDriver:false which breaks native-driver
+        // sequences on iOS/Android.
         Animated.timing(translateX, {
           toValue:         -travel,
           duration:        scrollDuration,
@@ -102,29 +109,13 @@ export function MarqueeText({ children, style }: Props) {
         }),
       ]),
     );
-    animRef.current.start();
-  }, [overflows, naturalW, translateX]);
+    animRef.current = anim;
+    anim.start();
 
-  useEffect(() => {
-    startAnim();
     return () => {
-      animRef.current?.stop();
-      animRef.current = null;
+      anim.stop();
     };
-  }, [startAnim]);
-
-  // Reset & remeasure whenever the text content changes.
-  useEffect(() => {
-    animRef.current?.stop();
-    animRef.current = null;
-    translateX.setValue(0);
-    // On native, reset naturalW so the measurer's onLayout fires fresh.
-    // On web, useLayoutEffect re-runs from the children dep above and sets
-    // naturalW before this useEffect fires — don't overwrite it.
-    if (Platform.OS !== "web") {
-      setNaturalW(0);
-    }
-  }, [children, translateX]);
+  }, [overflows, naturalW, translateX]);
 
   // ── Gradient edge fade (web only) ─────────────────────────────────────────
   const clipStyle =
@@ -143,15 +134,18 @@ export function MarqueeText({ children, style }: Props) {
       style={styles.root}
       onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}
     >
-      {/* ── Invisible measurer ──────────────────────────────────────────────
-           Web: naturalW is set by the useLayoutEffect span above; this node
-           is still rendered for ref validity but its onLayout is not wired.
+      {/* ── Invisible measurer ────────────────────────────────────────────────
+           keyed on `children` so it fully remounts on text changes, which
+           guarantees onTextLayout fires fresh on native.
 
-           Native: we wrap the Text in a very wide absolutely-positioned
-           container (MEASURER_MAX_W) so the Text is never constrained to the
-           parent's flex width. onLayout then fires with the true natural
-           single-line width instead of the (smaller) container width. */}
+           Web: naturalW is set via the useLayoutEffect span above.
+           Native: onTextLayout gives the actual rendered line width which is
+           the true glyph width of the text — more reliable than onLayout on
+           an absolutely-positioned container, since onTextLayout bypasses any
+           Yoga absolute-layout sizing ambiguities.
+           The 2000px wide container ensures the text is never constrained. */}
       <View
+        key={children}
         style={styles.measurerWrap}
         pointerEvents="none"
         accessible={false}
@@ -159,9 +153,12 @@ export function MarqueeText({ children, style }: Props) {
         <Text
           style={[style, styles.measurerText]}
           numberOfLines={1}
-          onLayout={
+          onTextLayout={
             Platform.OS !== "web"
-              ? (e) => setNaturalW(e.nativeEvent.layout.width)
+              ? (e) => {
+                  const w = e.nativeEvent.lines[0]?.width ?? 0;
+                  if (w > 0) setNaturalW(Math.ceil(w));
+                }
               : undefined
           }
           accessibilityElementsHidden
@@ -177,11 +174,8 @@ export function MarqueeText({ children, style }: Props) {
           <Animated.View
             style={[styles.row, { transform: [{ translateX }] }]}
           >
-            {/* First copy.
-                flexShrink:0 prevents CSS flex-shrink from truncating the text.
-                numberOfLines={1} prevents line-wrapping (adds white-space:nowrap).
-                Together they guarantee the text renders at exactly naturalW px
-                with no ellipsis and no wrapping. */}
+            {/* First copy. flexShrink:0 prevents CSS flex from truncating.
+                numberOfLines={1} prevents line-wrapping on native. */}
             <Text style={[style, { flexShrink: 0 }]} numberOfLines={1}>
               {children}
             </Text>
@@ -208,43 +202,26 @@ const styles = StyleSheet.create({
     overflow: "visible",
   },
   measurerWrap: {
-    // Absolutely positioned so it doesn't affect layout.
-    // Wide enough that any realistic reciter name renders at its natural
-    // single-line width — onLayout then reports that true width.
-    position:    "absolute",
-    top:         0,
-    left:        0,
-    width:       MEASURER_MAX_W,
-    opacity:     0,
-    overflow:    "hidden",
-    // ⚠️  CRITICAL: Yoga's default alignItems:"stretch" would cause the child
-    // Text to fill the full 2000 px container width.  onLayout would then
-    // report naturalW = 2000, travel = 2060 px, and scrollDuration ≈ 54 s —
-    // the text IS scrolling but spends 54 of every 55 seconds on blank space,
-    // which looks completely frozen to the user.
-    // alignItems:"flex-start" lets the Text size to its content, so naturalW
-    // is the true glyph width and the scroll distance/speed are correct.
-    alignItems:  "flex-start",
+    position:   "absolute",
+    top:        0,
+    left:       0,
+    width:      MEASURER_MAX_W,
+    opacity:    0,
+    overflow:   "hidden",
+    // alignItems:"flex-start" lets the Text size to its content width rather
+    // than stretching to fill the 2000 px container. Without this, onLayout
+    // (if used) would report naturalW = 2000 and travel ≈ 54 s.
+    alignItems: "flex-start",
   },
   measurerText: {
-    // Inherits all font styles from the prop (fontSize, fontWeight, etc.).
-    // alignSelf defaults to "auto" which respects the parent's alignItems
-    // (flex-start above), so the Text is content-sized, not 2000 px wide.
+    // Inherits all font styles from the prop.
   },
   clip: {
     overflow: "hidden",
-    // DO NOT use flex:1 here. On native (Yoga), flex:1 = flexBasis:0 which
-    // collapses the view to 0 height when the parent has no explicit height.
-    // On web, CSS min-height:auto prevents this, so the bug is web-invisible.
-    // Without flex:1, Yoga sizes clip to its content height (the text) and
-    // stretches it to parent width via the default alignSelf:"stretch".
-    paddingVertical: 4, // room for text descenders + textShadow bleed
+    paddingVertical: 4,
   },
   row: {
     flexDirection: "row",
-    // Prevent default align-self:stretch from constraining the row to
-    // containerW. With flex-start the row is exactly (2*naturalW + GAP_PX)
-    // wide — the full two-copy track needed for the seamless loop.
     alignSelf:     "flex-start",
   },
 });

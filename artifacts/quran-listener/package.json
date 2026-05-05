@@ -57,6 +57,6 @@
   },
   "dependencies": {
     "expo-audio": "1.1.0",
-    "expo-video": "~3.0.16"
+    "expo-av": "^16.0.8"
   }
 }
