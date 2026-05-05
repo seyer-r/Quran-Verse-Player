@@ -42,10 +42,30 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import { useVideoPlayer, VideoView } from "expo-video";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SymbolIcon } from "@/components/SymbolIcon";
 import type { CustomBg } from "@/lib/useSettings";
+
+// ── VideoPreview (native only) ─────────────────────────────────────────────
+// Dedicated component so useVideoPlayer (a hook) can be called unconditionally.
+// Key the element on the URI so the player is fully recreated when media changes.
+function VideoPreview({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop  = true;
+    p.muted = true;
+    p.play();
+  });
+  return (
+    <VideoView
+      player={player}
+      style={StyleSheet.absoluteFill}
+      contentFit="cover"
+      nativeControls={false}
+    />
+  );
+}
 
 const CANVAS_RADIUS = 14;
 const CANVAS_ASPECT = 19.5 / 9; // portrait — matches the actual app screen ratio
@@ -82,13 +102,26 @@ export function CustomBackgroundEditor({
   const currentTxRef = useRef(0);
   const currentTyRef = useRef(0);
   const gestureRef = useRef({
-    startScale: 1,
-    startTx: 0,
-    startTy: 0,
-    startDist: 1,
-    lastScale: 1,
-    lastTx: 0,
-    lastTy: 0,
+    // ── Single-touch baseline ─────────────────────────────────────────────
+    // Absolute page coords of the initial touch; baseTx/Ty = transform when
+    // this single-touch phase started.  Using absolute coords (not s.dx/s.dy)
+    // lets us re-anchor cleanly when finger count changes mid-gesture.
+    pivotX:      0,
+    pivotY:      0,
+    baseTx:      0,
+    baseTy:      0,
+    baseScale:   1,
+    // ── Multi-touch baseline ──────────────────────────────────────────────
+    // Snapshot taken the moment a second finger touches down (or when the
+    // gesture starts with two fingers).  Reset each time we enter 2-finger mode.
+    isMultiTouch: false,
+    mtMidX:      0,   // initial midpoint X of the two fingers
+    mtMidY:      0,   // initial midpoint Y of the two fingers
+    mtDist:      1,   // initial distance between the two fingers
+    // ── Latest committed values (read on release for clamping) ────────────
+    lastScale:   1,
+    lastTx:      0,
+    lastTy:      0,
   });
   const clampRef = useRef<
     (s: number, x: number, y: number) => { scale: number; tx: number; ty: number }
@@ -136,32 +169,86 @@ export function CustomBackgroundEditor({
       onMoveShouldSetPanResponderCapture: () => draftUriRef.current !== null,
       onPanResponderGrant: (evt) => {
         const g = gestureRef.current;
-        g.startScale = currentScaleRef.current;
-        g.startTx    = currentTxRef.current;
-        g.startTy    = currentTyRef.current;
+        const t = evt.nativeEvent.touches;
+
+        // Snapshot the current transform as the baseline for this gesture.
+        g.baseScale  = currentScaleRef.current;
+        g.baseTx     = currentTxRef.current;
+        g.baseTy     = currentTyRef.current;
         g.lastScale  = currentScaleRef.current;
         g.lastTx     = currentTxRef.current;
         g.lastTy     = currentTyRef.current;
-        const t = evt.nativeEvent.touches;
+        g.isMultiTouch = false;
+
         if (t && t.length >= 2) {
-          const dx = t[1].pageX - t[0].pageX;
-          const dy = t[1].pageY - t[0].pageY;
-          g.startDist = Math.sqrt(dx * dx + dy * dy) || 1;
+          // Started with two fingers — initialise multi-touch baseline.
+          g.isMultiTouch = true;
+          const midX = (t[0].pageX + t[1].pageX) / 2;
+          const midY = (t[0].pageY + t[1].pageY) / 2;
+          const dx   = t[1].pageX - t[0].pageX;
+          const dy   = t[1].pageY - t[0].pageY;
+          g.mtMidX = midX;
+          g.mtMidY = midY;
+          g.mtDist = Math.sqrt(dx * dx + dy * dy) || 1;
+        } else if (t && t.length >= 1) {
+          // Single finger — record the absolute touch anchor.
+          g.pivotX = t[0].pageX;
+          g.pivotY = t[0].pageY;
         }
       },
-      onPanResponderMove: (evt, s) => {
+      onPanResponderMove: (evt) => {
         const g = gestureRef.current;
         const t = evt.nativeEvent.touches;
-        if (t && t.length >= 2) {
-          const dx    = t[1].pageX - t[0].pageX;
-          const dy    = t[1].pageY - t[0].pageY;
-          const dist  = Math.sqrt(dx * dx + dy * dy) || 1;
-          const newSc = Math.max(0.3, g.startScale * (dist / g.startDist));
-          scaleAnim.setValue(newSc);
-          g.lastScale = newSc;
+        if (!t || t.length === 0) return;
+
+        if (t.length >= 2) {
+          // ── Two-finger: simultaneous pan + pinch ────────────────────────
+          const midX = (t[0].pageX + t[1].pageX) / 2;
+          const midY = (t[0].pageY + t[1].pageY) / 2;
+          const dx   = t[1].pageX - t[0].pageX;
+          const dy   = t[1].pageY - t[0].pageY;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+          if (!g.isMultiTouch) {
+            // A second finger arrived mid-gesture: lock current state as the
+            // new baseline so there is no position/scale jump.
+            g.isMultiTouch = true;
+            g.baseTx       = g.lastTx;
+            g.baseTy       = g.lastTy;
+            g.baseScale    = g.lastScale;
+            g.mtMidX       = midX;
+            g.mtMidY       = midY;
+            g.mtDist       = dist;
+          }
+
+          // Scale from the baseline; always ≥ 1 so the image never shrinks
+          // below its "fill" size and exposes the black canvas background.
+          const newScale = Math.max(1.0, g.baseScale * (dist / g.mtDist));
+          // Pan: follow the midpoint of the two fingers.
+          const newTx   = g.baseTx + (midX - g.mtMidX);
+          const newTy   = g.baseTy + (midY - g.mtMidY);
+
+          scaleAnim.setValue(newScale);
+          translateXAnim.setValue(newTx);
+          translateYAnim.setValue(newTy);
+          g.lastScale = newScale;
+          g.lastTx    = newTx;
+          g.lastTy    = newTy;
+
         } else {
-          const newTx = g.startTx + s.dx;
-          const newTy = g.startTy + s.dy;
+          // ── Single finger: pan only ──────────────────────────────────────
+          if (g.isMultiTouch) {
+            // Second finger just lifted: re-anchor single-touch to avoid a jump.
+            g.isMultiTouch = false;
+            g.baseTx       = g.lastTx;
+            g.baseTy       = g.lastTy;
+            g.pivotX       = t[0].pageX;
+            g.pivotY       = t[0].pageY;
+          }
+
+          const newTx = g.baseTx + (t[0].pageX - g.pivotX);
+          const newTy = g.baseTy + (t[0].pageY - g.pivotY);
+
           translateXAnim.setValue(newTx);
           translateYAnim.setValue(newTy);
           g.lastTx = newTx;
@@ -446,13 +533,15 @@ export function CustomBackgroundEditor({
                 ]}
                 pointerEvents="none"
               >
-                {draftMediaType === "image" || Platform.OS !== "web" ? (
+                {draftMediaType === "image" ? (
+                  // ── Photo ───────────────────────────────────────────────
                   <Image
                     source={{ uri: draftUri! }}
                     style={StyleSheet.absoluteFill}
                     contentFit="cover"
                   />
-                ) : (
+                ) : Platform.OS === "web" ? (
+                  // ── Video (web) — raw <video> element via createElement ─
                   <View style={StyleSheet.absoluteFill}>
                     {React.createElement("video", {
                       src: draftUri,
@@ -470,6 +559,10 @@ export function CustomBackgroundEditor({
                       },
                     })}
                   </View>
+                ) : (
+                  // ── Video (native) — expo-video, keyed on URI so the
+                  //    player is fully recreated when the user picks a new clip.
+                  <VideoPreview key={draftUri} uri={draftUri!} />
                 )}
               </Animated.View>
             )}
