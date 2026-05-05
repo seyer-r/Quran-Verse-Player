@@ -164,8 +164,13 @@ export function CustomBackgroundEditor({
     PanResponder.create({
       onStartShouldSetPanResponder: () => draftUriRef.current !== null,
       onMoveShouldSetPanResponder: () => draftUriRef.current !== null,
-      // Capture prevents the parent modal dismiss gesture from competing.
-      onStartShouldSetPanResponderCapture: () => draftUriRef.current !== null,
+      // Do NOT use onStartShouldSetPanResponderCapture — on iOS native it
+      // double-counts touches and triggers "trackedTouchCount" warnings that
+      // drop gesture events.  The fullScreen modal means there is no system
+      // pull-to-dismiss gesture competing, so capture on start is unnecessary.
+      // onMoveShouldSetPanResponderCapture steals drag events from child views
+      // (fine — a deliberate drag on the canvas should always pan/pinch).
+      onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponderCapture: () => draftUriRef.current !== null,
       onPanResponderGrant: (evt) => {
         const g = gestureRef.current;
