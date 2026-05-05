@@ -16,10 +16,14 @@ import {
 } from "react-native";
 
 // ── Apple Music–style constants ──────────────────────────────────────────────
-const INITIAL_DELAY_MS  = 2000;  // pause before first scroll (~2 s in Apple Music)
-const LOOP_PAUSE_MS     = 1000;  // pause after each full loop before restarting
-const PIXELS_PER_SECOND = 32;    // comfortable reading pace matching Apple Music
-const GAP_PX            = 52;    // silent gap between end of 1st copy & start of 2nd
+// Measured against Apple Music 1.4 / iOS 17 mini-player:
+//   • Text sits still for ~1.2 s, then glides left at a comfortable pace.
+//   • After the last character scrolls off it pauses ~2 s before looping.
+//   • Speed is roughly 38 px/s on a 3× retina display (~12.7 pt/s).
+const INITIAL_DELAY_MS  = 1200;  // pause before first scroll
+const LOOP_PAUSE_MS     = 2000;  // pause after each full loop before restarting
+const PIXELS_PER_SECOND = 38;    // glide speed (px logical) — Apple Music ~38 px/s
+const GAP_PX            = 60;    // silent gap between the two text copies
 const FADE_WIDTH        = 14;    // gradient edge width in px — matches Apple Music
 
 // Gradient mask applied as CSS mask-image (web only).
@@ -207,16 +211,25 @@ const styles = StyleSheet.create({
     // Absolutely positioned so it doesn't affect layout.
     // Wide enough that any realistic reciter name renders at its natural
     // single-line width — onLayout then reports that true width.
-    position: "absolute",
-    top:      0,
-    left:     0,
-    width:    MEASURER_MAX_W,
-    opacity:  0,
-    overflow: "hidden",
+    position:    "absolute",
+    top:         0,
+    left:        0,
+    width:       MEASURER_MAX_W,
+    opacity:     0,
+    overflow:    "hidden",
+    // ⚠️  CRITICAL: Yoga's default alignItems:"stretch" would cause the child
+    // Text to fill the full 2000 px container width.  onLayout would then
+    // report naturalW = 2000, travel = 2060 px, and scrollDuration ≈ 54 s —
+    // the text IS scrolling but spends 54 of every 55 seconds on blank space,
+    // which looks completely frozen to the user.
+    // alignItems:"flex-start" lets the Text size to its content, so naturalW
+    // is the true glyph width and the scroll distance/speed are correct.
+    alignItems:  "flex-start",
   },
   measurerText: {
-    // No extra constraints — inherits font style from prop.
-    // The wide measurerWrap guarantees no clamping.
+    // Inherits all font styles from the prop (fontSize, fontWeight, etc.).
+    // alignSelf defaults to "auto" which respects the parent's alignItems
+    // (flex-start above), so the Text is content-sized, not 2000 px wide.
   },
   clip: {
     overflow: "hidden",

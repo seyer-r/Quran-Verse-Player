@@ -2295,6 +2295,10 @@ const styles = StyleSheet.create({
   },
   reciterCol: {
     flex: 1,
+    // Cap width so the reciter name always overflows and the marquee scrolls
+    // on every screen size — including the wide web preview.  Apple Music's
+    // "now playing" info panel is similarly constrained (~130–160 pt wide).
+    maxWidth: 140,
     minWidth: 0,
     minHeight: 44,
     justifyContent: "center",
