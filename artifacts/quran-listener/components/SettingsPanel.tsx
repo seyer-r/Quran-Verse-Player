@@ -219,22 +219,24 @@ export function SettingsPanel({
           accessibilityViewIsModal
           accessibilityLabel="Settings"
         >
-          {/* Handle grip — swipe down to dismiss */}
-          <View style={styles.handleWrap} {...swipePan.panHandlers}>
-            <View style={styles.handle} />
-          </View>
-
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Settings</Text>
-            <TouchableOpacity
-              onPress={onClose}
-              accessibilityLabel="Close settings"
-              hitSlop={12}
-              style={styles.closeBtn}
-              activeOpacity={0.7}
-            >
-              <SymbolIcon name="xmark" fallbackIonicon="close" size={18} color="#a3a3a3" weight="semibold" />
-            </TouchableOpacity>
+          {/* Handle grip + full header row are swipeable — Apple native sheets
+              treat the entire top chrome as a drag target, not just the handle. */}
+          <View {...swipePan.panHandlers}>
+            <View style={styles.handleWrap}>
+              <View style={styles.handle} />
+            </View>
+            <View style={styles.header}>
+              <Text style={styles.headerTitle}>Settings</Text>
+              <TouchableOpacity
+                onPress={onClose}
+                accessibilityLabel="Close settings"
+                hitSlop={12}
+                style={styles.closeBtn}
+                activeOpacity={0.7}
+              >
+                <SymbolIcon name="xmark" fallbackIonicon="close" size={18} color="#a3a3a3" weight="semibold" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView
@@ -473,44 +475,45 @@ export function SettingsPanel({
               })}
             </View>
 
-            {/* Volume slider — only when an ambient is selected */}
+            {/* Volume control — only when an ambient is selected */}
             {ambient !== "off" && (
               <View style={styles.volumeWrap}>
-                <View style={styles.volumeHeader}>
-                  <SymbolIcon
-                    name="speaker.wave.1.fill"
-                    fallbackIonicon="volume-low"
-                    size={14}
-                    color="#8e8e93"
-                  />
-                  <Text style={styles.volumeLabel}>Ambient volume</Text>
-                  <SymbolIcon
-                    name="speaker.wave.3.fill"
-                    fallbackIonicon="volume-high"
-                    size={14}
-                    color="#8e8e93"
-                    style={{ marginLeft: "auto" } as any}
-                  />
-                </View>
-                <View style={styles.volumeRow}>
-                  {([0.25, 0.5, 0.75, 1] as const).map((v) => (
-                    <TouchableOpacity
-                      key={v}
-                      onPress={() => onAmbientVolumeChange(v)}
-                      hitSlop={8}
-                      style={styles.volumeBarTouch}
-                      accessibilityLabel={`Volume ${Math.round(v * 100)}%`}
-                      activeOpacity={0.7}
-                    >
-                      <View
-                        style={[
-                          styles.volumeBar,
-                          { height: 12 + v * 28 },
-                          ambientVolume >= v && styles.volumeBarActive,
-                        ]}
-                      />
-                    </TouchableOpacity>
-                  ))}
+                <View style={styles.volumeInner}>
+                  <View style={styles.volumeHeader}>
+                    <SymbolIcon
+                      name="speaker.wave.1.fill"
+                      fallbackIonicon="volume-low"
+                      size={14}
+                      color="#8e8e93"
+                    />
+                    <Text style={styles.volumeLabel}>Ambient volume</Text>
+                    <SymbolIcon
+                      name="speaker.wave.3.fill"
+                      fallbackIonicon="volume-high"
+                      size={14}
+                      color="#8e8e93"
+                    />
+                  </View>
+                  <View style={styles.volumeRow}>
+                    {([0.25, 0.5, 0.75, 1] as const).map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        onPress={() => onAmbientVolumeChange(v)}
+                        hitSlop={8}
+                        style={styles.volumeBarTouch}
+                        accessibilityLabel={`Volume ${Math.round(v * 100)}%`}
+                        activeOpacity={0.7}
+                      >
+                        <View
+                          style={[
+                            styles.volumeBar,
+                            { height: 12 + v * 28 },
+                            ambientVolume >= v && styles.volumeBarActive,
+                          ]}
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
               </View>
             )}
@@ -853,7 +856,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 13,
     color: "#8e8e93",
-    fontWeight: "500",
+    fontWeight: "400",
     letterSpacing: 0.8,
     textTransform: "uppercase",
     marginBottom: 10,
@@ -917,6 +920,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#1a1a1a",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "rgba(255,255,255,0.18)",
+    borderRadius: 12,
   },
   bgCustomVideoThumb: {
     alignItems: "center",
@@ -988,6 +995,11 @@ const styles = StyleSheet.create({
   volumeWrap: {
     marginTop: 14,
     paddingHorizontal: 4,
+    alignItems: "center",
+  },
+  volumeInner: {
+    width: "100%",
+    maxWidth: 200,
   },
   volumeHeader: {
     flexDirection: "row",
@@ -1000,6 +1012,7 @@ const styles = StyleSheet.create({
     color: "#8e8e93",
     fontWeight: "400",
     flex: 1,
+    textAlign: "center",
   },
   volumeRow: {
     flexDirection: "row",

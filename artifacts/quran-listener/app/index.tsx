@@ -158,6 +158,9 @@ export default function PlayerScreen() {
   const [verseMenuVisible, setVerseMenuVisible] = useState(false);
   const [copyConfirmed, setCopyConfirmed] = useState(false);
   const menuScale = useRef(new Animated.Value(0.88)).current;
+  // Absolute Y of the long-press gesture — used to anchor the context menu
+  // near the verse rather than centred on the screen (UIContextMenu behaviour).
+  const menuAnchorY = useRef(0);
   const [pickerInitialStep, setPickerInitialStep] = useState<
     "surah" | "ayah"
   >("surah");
@@ -314,14 +317,13 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [scheduleHide]);
 
-  // Tap on the empty stage / verse area: TOGGLE the chrome. This is what
-  // the user expects from a video-player-style overlay — tap once to
-  // reveal, tap again to hide. Distinct from `pokeControls`, which is
-  // called from the controls themselves (play / next / picker / …) and
-  // must always show, never hide, so the user sees feedback.
+  // Tap on the empty stage / verse area: always reveal chrome and reset the
+  // auto-hide timer. A single tap shows; the 5 s timer then hides. This
+  // matches every Apple video-player app (TV, YouTube on iOS) — tap reveals,
+  // inactivity hides. A toggle was too easy to trigger accidentally while reading.
   const tapBackground = useCallback(() => {
-    setChromeVisible((v) => !v);
-  }, []);
+    pokeControls();
+  }, [pokeControls]);
 
   useEffect(() => {
     Animated.timing(chromeOpacity, {
@@ -619,6 +621,8 @@ export default function PlayerScreen() {
         setSleepRemainingMs(0);
         setSleepExpiresAt(null);
         setSleepDurationMin(null);
+        // Gentle "done" pulse — same pattern as Apple Clock timer completion.
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         return;
       }
       if (remaining <= FADE_MS) {
@@ -656,6 +660,30 @@ export default function PlayerScreen() {
 
   const stageOpacity = useRef(new Animated.Value(1)).current;
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Animated progress fill — smoothly interpolates from 0→100 as each ayah
+  // plays, and snaps to the new baseline when the index advances.
+  // This couples the progress bar visually to the verse crossfade transition.
+  const animatedProgress = useRef(new Animated.Value(0)).current;
+  const animatedOverallProgress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(animatedProgress, {
+      toValue: progress,
+      duration: 160,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: false,
+    }).start();
+  }, [progress, animatedProgress]);
+  useEffect(() => {
+    Animated.timing(animatedOverallProgress, {
+      toValue: overallProgress,
+      duration: 160,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: false,
+    }).start();
+  // overallProgress is derived from index + progress; this effect re-runs on both.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overallProgress, animatedOverallProgress]);
 
   // Cross-fade between background images.
   const bgFade = useRef(new Animated.Value(1)).current;
@@ -1598,11 +1626,20 @@ export default function PlayerScreen() {
             }}
             activeOpacity={0.7}
             accessibilityLabel="Choose ayah"
-            style={{ paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: "center" }}
+            style={styles.counterBtn}
           >
-            <Text style={[styles.counter, secondaryOverride]}>
-              Ayah {ayahs[index].number} of {ayahs.length}
-            </Text>
+            <View style={styles.counterPill}>
+              <Text style={[styles.counter, secondaryOverride]}>
+                Ayah {ayahs[index].number} of {ayahs.length}
+              </Text>
+              <SymbolIcon
+                name="chevron.up.chevron.down"
+                fallbackIonicon="swap-vertical"
+                size={10}
+                color="#525252"
+                style={{ marginLeft: 4 }}
+              />
+            </View>
           </TouchableOpacity>
         </Animated.View>
 
@@ -1630,8 +1667,9 @@ export default function PlayerScreen() {
                 arLh={arLh}
                 translationFontSize={translationFontSize}
                 onTap={tapBackground}
-                onLongPress={() => {
+                onLongPress={(pageY) => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  menuAnchorY.current = pageY;
                   setVerseMenuVisible(true);
                 }}
               />
@@ -1647,57 +1685,66 @@ export default function PlayerScreen() {
           ]}
           pointerEvents={chromeVisible ? "auto" : "none"}
         >
-          {sleepExpiresAt !== null && sleepDurationMin !== null && (
-            <TouchableOpacity
-              style={styles.sleepChip}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                setSleepTimerMinutes(null);
-              }}
-              activeOpacity={0.7}
-              accessibilityLabel="Cancel sleep timer"
-              hitSlop={8}
-            >
-              <SymbolIcon
-                name="moon.fill"
-                fallbackIonicon="moon"
-                size={11}
-                color="#e8c078"
-              />
-              <Text style={styles.sleepChipText}>
-                {formatRemaining(sleepRemainingMs)} · tap to cancel
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {ayahs.length <= SEGMENTED_PROGRESS_MAX ? (
-            <View style={styles.progressRow}>
-              {ayahs.map((a, i) => {
-                const fill = i < index ? 100 : i === index ? progress : 0;
-                return (
-                  <View
-                    key={a.number}
-                    style={styles.progressTrack}
-                  >
-                    <View
-                      style={[styles.progressFill, { width: `${fill}%` }]}
-                    />
-                  </View>
-                );
-              })}
-            </View>
-          ) : (
-            <View style={styles.singleProgressRow}>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${overallProgress}%` },
-                  ]}
-                />
+          {/* Progress bar + sleep chip overlay — chip floats over the right
+              end of the track so it never shifts the controls below it. */}
+          <View style={styles.progressAreaWrap}>
+            {ayahs.length <= SEGMENTED_PROGRESS_MAX ? (
+              <View style={styles.progressRow}>
+                {ayahs.map((a, i) => {
+                  const staticFill = i < index ? 100 : i > index ? 0 : null;
+                  return (
+                    <View key={a.number} style={styles.progressTrack}>
+                      {staticFill !== null ? (
+                        <View style={[styles.progressFill, { width: `${staticFill}%` }]} />
+                      ) : (
+                        <Animated.View
+                          style={[
+                            styles.progressFill,
+                            { width: animatedProgress.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"] }) },
+                          ]}
+                        />
+                      )}
+                    </View>
+                  );
+                })}
               </View>
-            </View>
-          )}
+            ) : (
+              <View style={styles.progressRow}>
+                <View style={styles.progressTrack}>
+                  <Animated.View
+                    style={[
+                      styles.progressFill,
+                      { width: animatedOverallProgress.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"] }) },
+                    ]}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Sleep chip — absolute right of the progress row, zero layout shift */}
+            {sleepExpiresAt !== null && sleepDurationMin !== null && (
+              <TouchableOpacity
+                style={styles.sleepChip}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setSleepTimerMinutes(null);
+                }}
+                activeOpacity={0.7}
+                accessibilityLabel="Cancel sleep timer"
+                hitSlop={12}
+              >
+                <SymbolIcon
+                  name="moon.fill"
+                  fallbackIonicon="moon"
+                  size={10}
+                  color="#e8c078"
+                />
+                <Text style={styles.sleepChipText}>
+                  {formatRemaining(sleepRemainingMs)}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           <View style={styles.controlsRow}>
             <TouchableOpacity
@@ -1846,14 +1893,14 @@ export default function PlayerScreen() {
                 <SymbolIcon
                   name="arrow.counterclockwise"
                   fallbackIonicon="refresh"
-                  size={20}
+                  size={22}
                   color="#8e8e93"
                 />
               </TouchableOpacity>
             </View>
           </View>
           {audioError && (
-            <Text style={styles.errorCaption}>Tap to retry</Text>
+            <Text style={styles.errorCaption}>Audio unavailable — tap ▲ to retry</Text>
           )}
         </Animated.View>
       </Pressable>
@@ -1948,9 +1995,21 @@ export default function PlayerScreen() {
           ]}
           onPress={() => setVerseMenuVisible(false)}
         >
-          {/* Spring-animated container — stops taps propagating to overlay */}
+          {/* Container anchored near the long-press point.
+              Flips above the tap point when the user is in the lower half of
+              the screen — matching UIContextMenu's vertical flip behaviour. */}
           <Animated.View
-            style={[styles.ctxContainer, { transform: [{ scale: menuScale }] }]}
+            style={[
+              styles.ctxContainer,
+              { transform: [{ scale: menuScale }] },
+              (() => {
+                const anchorY = menuAnchorY.current;
+                const inLowerHalf = anchorY > screenHeight * 0.55;
+                return inLowerHalf
+                  ? { position: "absolute", bottom: screenHeight - anchorY + 16 }
+                  : { position: "absolute", top: anchorY - 8 };
+              })(),
+            ]}
           >
             {/* ① Preview card — verse "lifted" from the page */}
             <Pressable style={styles.ctxPreview} onPress={() => {}}>
@@ -2013,29 +2072,6 @@ export default function PlayerScreen() {
                       ? "#e8c078"
                       : "rgba(235,235,245,0.6)"
                   }
-                />
-              </TouchableOpacity>
-
-              <View style={styles.ctxSep} />
-
-              {/* Repeat Ayah */}
-              <TouchableOpacity
-                style={styles.ctxRow}
-                activeOpacity={0.5}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setRepeatAyah(!settings.repeatAyah);
-                  setVerseMenuVisible(false);
-                }}
-              >
-                <Text style={styles.ctxRowLabel}>
-                  {settings.repeatAyah ? "Stop Repeating" : "Repeat Ayah"}
-                </Text>
-                <SymbolIcon
-                  name={settings.repeatAyah ? "checkmark" : "repeat.1"}
-                  fallbackIonicon={settings.repeatAyah ? "checkmark" : "repeat"}
-                  size={17}
-                  color={settings.repeatAyah ? "#34C759" : "#8e8e93"}
                 />
               </TouchableOpacity>
 
@@ -2194,6 +2230,21 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 4,
   },
+  counterBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  counterPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
   counter: {
     fontSize: 13,
     letterSpacing: 0,
@@ -2251,29 +2302,32 @@ const styles = StyleSheet.create({
   progressRow: {
     flexDirection: "row",
     gap: 6,
-    marginBottom: 18,
   },
-  singleProgressRow: {
+  progressAreaWrap: {
+    position: "relative",
     marginBottom: 18,
   },
   sleepChip: {
-    alignSelf: "center",
+    position: "absolute",
+    right: 0,
+    top: "50%",
+    transform: [{ translateY: -11 }],
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: 999,
-    backgroundColor: "rgba(232,192,120,0.10)",
+    backgroundColor: "rgba(232,192,120,0.12)",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(232,192,120,0.35)",
-    marginBottom: 12,
+    borderColor: "rgba(232,192,120,0.4)",
   },
   sleepChipText: {
-    fontSize: 12,
+    fontSize: 11,
     letterSpacing: 0,
     color: "#e8c078",
     fontWeight: "500",
+    fontVariant: ["tabular-nums"],
   },
   progressTrack: {
     flex: 1,
@@ -2368,12 +2422,10 @@ const styles = StyleSheet.create({
   ctxOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.50)",
-    alignItems: "center",
-    justifyContent: "center",
   },
-  // Container: fixed width, spring-animated
   ctxContainer: {
-    width: 320,
+    width: 300,
+    alignSelf: "center",
   },
   // ① Preview card: the verse "lifted" from the page
   ctxPreview: {
@@ -2556,7 +2608,7 @@ type AyahViewProps = {
   arLh: number;
   translationFontSize: number;
   onTap: () => void;
-  onLongPress?: () => void;
+  onLongPress?: (pageY: number) => void;
 };
 
 function AyahView({
@@ -2641,7 +2693,13 @@ function AyahView({
             maybeShowInitialBottom();
           }}
         >
-          <Pressable onPress={onTap} onLongPress={onLongPress} delayLongPress={500} android_disableSound style={styles.verseInner}>
+          <Pressable
+            onPress={onTap}
+            onLongPress={(e) => onLongPress?.(e.nativeEvent.pageY)}
+            delayLongPress={500}
+            android_disableSound
+            style={styles.verseInner}
+          >
             <Text
               style={[
                 styles.arabic,

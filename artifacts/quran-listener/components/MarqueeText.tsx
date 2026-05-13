@@ -1,3 +1,4 @@
+import { LinearGradient } from "expo-linear-gradient";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -117,8 +118,11 @@ export function MarqueeText({ children, style }: Props) {
     };
   }, [overflows, naturalW, translateX]);
 
-  // ── Gradient edge fade (web only) ─────────────────────────────────────────
-  const clipStyle =
+  // ── Gradient edge fade ─────────────────────────────────────────────────────
+  // Web: CSS mask-image for a smooth hardware-accelerated fade.
+  // Native: expo-linear-gradient overlays (transparent→bg, bg→transparent)
+  // pinned to left/right edges of the clip container.
+  const webClipStyle =
     overflows && Platform.OS === "web"
       ? [
           styles.clip,
@@ -134,16 +138,9 @@ export function MarqueeText({ children, style }: Props) {
       style={styles.root}
       onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}
     >
-      {/* ── Invisible measurer ────────────────────────────────────────────────
-           keyed on `children` so it fully remounts on text changes, which
-           guarantees onTextLayout fires fresh on native.
-
+      {/* ── Invisible measurer ───────────────────────────────────────────────
            Web: naturalW is set via the useLayoutEffect span above.
-           Native: onTextLayout gives the actual rendered line width which is
-           the true glyph width of the text — more reliable than onLayout on
-           an absolutely-positioned container, since onTextLayout bypasses any
-           Yoga absolute-layout sizing ambiguities.
-           The 2000px wide container ensures the text is never constrained. */}
+           Native: onTextLayout gives the actual rendered glyph width. */}
       <View
         key={children}
         style={styles.measurerWrap}
@@ -168,19 +165,15 @@ export function MarqueeText({ children, style }: Props) {
         </Text>
       </View>
 
-      {/* ── Clipping container with optional gradient mask ── */}
-      <View style={clipStyle as any}>
+      {/* ── Clipping container with gradient mask ── */}
+      <View style={webClipStyle as any}>
         {overflows ? (
           <Animated.View
             style={[styles.row, { transform: [{ translateX }] }]}
           >
-            {/* First copy. flexShrink:0 prevents CSS flex from truncating.
-                numberOfLines={1} prevents line-wrapping on native. */}
             <Text style={[style, { flexShrink: 0 }]} numberOfLines={1}>
               {children}
             </Text>
-            {/* Second copy — GAP_PX silent space before it so the seamless
-                reset from -travel → 0 is indistinguishable from normal scroll */}
             <Text style={[style, { paddingLeft: GAP_PX, flexShrink: 0 }]} numberOfLines={1}>
               {children}
             </Text>
@@ -189,6 +182,27 @@ export function MarqueeText({ children, style }: Props) {
           <Text style={style} numberOfLines={1}>
             {children}
           </Text>
+        )}
+
+        {/* Native gradient overlays — left and right edge fades.
+            Transparent → opaque black matches the player's dark background. */}
+        {overflows && Platform.OS !== "web" && (
+          <>
+            <LinearGradient
+              pointerEvents="none"
+              colors={["rgba(0,0,0,1)", "rgba(0,0,0,0)"]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={[styles.fadeEdge, styles.fadeLeft]}
+            />
+            <LinearGradient
+              pointerEvents="none"
+              colors={["rgba(0,0,0,0)", "rgba(0,0,0,1)"]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={[styles.fadeEdge, styles.fadeRight]}
+            />
+          </>
         )}
       </View>
     </View>
@@ -219,9 +233,22 @@ const styles = StyleSheet.create({
   clip: {
     overflow: "hidden",
     paddingVertical: 4,
+    position: "relative",
   },
   row: {
     flexDirection: "row",
     alignSelf:     "flex-start",
+  },
+  fadeEdge: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: FADE_WIDTH,
+  },
+  fadeLeft: {
+    left: 0,
+  },
+  fadeRight: {
+    right: 0,
   },
 });

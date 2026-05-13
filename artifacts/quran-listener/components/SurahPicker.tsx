@@ -1006,10 +1006,10 @@ function AyahWheelPanel({
               onPress={onConfirm}
               activeOpacity={0.85}
               style={styles.confirmBtn}
-              accessibilityLabel={`Listen from ayah ${draftAyah}`}
+              accessibilityLabel={draftAyah === 1 ? "Start from beginning" : `Listen from Ayah ${draftAyah}`}
             >
               <Text style={styles.confirmBtnText}>
-                Listen from ayah {draftAyah}
+                {draftAyah === 1 ? "Start from beginning" : `Listen from Ayah ${draftAyah}`}
               </Text>
             </TouchableOpacity>
           </View>
