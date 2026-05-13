@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "JAL3qnAycMj1GNoVCrYRI"
@@ -72,3 +71,9 @@ id = "SWsvibwCXfx8uWjwoesX_"
 uri = "file://artifacts/quran-listener/assets/images/bg-mosque.png"
 type = "image"
 title = "minimalist mosque interior"
+
+[[outputs]]
+id = "HT4gCC3dSBTwTF8U-Io_h"
+uri = "file://qr-expo.png"
+type = "image"
+title = "Scan with Expo Go"
