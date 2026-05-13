@@ -1,7 +1,7 @@
 /**
  * CustomBackgroundEditor
  *
- * Full-screen modal where the user picks a photo/video and repositions it
+ * Full-screen modal where the user picks a photo and repositions it
  * inside a plain preview rectangle.
  *
  * Layout:
@@ -16,8 +16,6 @@
  *
  *   ┌──────────────────────────────────┐
  *   │  📷  Choose Photo        ›       │
- *   ├──────────────────────────────────┤
- *   │  🎬  Choose Video        ›       │
  *   └──────────────────────────────────┘
  *
  * Gesture note:
@@ -28,7 +26,7 @@
  *   taps Cancel to exit. On Android the modal is always fullScreen.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Modal,
@@ -42,29 +40,10 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { Video, ResizeMode } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SymbolIcon } from "@/components/SymbolIcon";
 import type { CustomBg } from "@/lib/useSettings";
-
-// ── NativeVideoPreview (native only) ──────────────────────────────────────
-// Uses expo-av's Video component which is reliably included in Expo Go and
-// handles overflow:hidden / Animated parent transforms correctly on iOS.
-// expo-video (VideoView) uses a separate Metal compositing layer that can
-// fail to render inside Animated.View transforms on Expo Go SDK 54.
-function NativeVideoPreview({ uri }: { uri: string }) {
-  return (
-    <Video
-      source={{ uri }}
-      style={StyleSheet.absoluteFill}
-      resizeMode={ResizeMode.COVER}
-      isLooping
-      isMuted
-      shouldPlay
-    />
-  );
-}
 
 const CANVAS_RADIUS = 14;
 const CANVAS_ASPECT = 19.5 / 9; // portrait — matches the actual app screen ratio
@@ -87,9 +66,6 @@ export function CustomBackgroundEditor({
 
   // ── State ─────────────────────────────────────────────────────────────────
   const [draftUri, setDraftUri] = useState<string | null>(null);
-  const [draftMediaType, setDraftMediaType] = useState<"image" | "video">(
-    "image",
-  );
   const [picking, setPicking] = useState(false);
 
   // ── ALL refs declared before any effect ───────────────────────────────────
@@ -306,7 +282,6 @@ export function CustomBackgroundEditor({
       const pixelTx = current.normalizedTx * canvasDimsRef.current.w;
       const pixelTy = current.normalizedTy * canvasDimsRef.current.h;
       setDraftUri(current.uri);
-      setDraftMediaType(current.mediaType);
       scaleAnim.setValue(current.scale);
       translateXAnim.setValue(pixelTx);
       translateYAnim.setValue(pixelTy);
@@ -412,30 +387,6 @@ export function CustomBackgroundEditor({
           } catch { /* keep blob URL */ }
         }
         setDraftUri(uri);
-        setDraftMediaType("image");
-        resetTransform();
-      }
-    } finally {
-      setPicking(false);
-    }
-  }, [resetTransform]);
-
-  const pickVideo = useCallback(async () => {
-    setPicking(true);
-    try {
-      if (Platform.OS !== "web") {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") { setPicking(false); return; }
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["videos"] as unknown as ImagePicker.MediaTypeOptions,
-        allowsEditing: false,
-        quality: 1,
-        videoMaxDuration: 120,
-      });
-      if (!result.canceled && result.assets[0]) {
-        setDraftUri(result.assets[0].uri);
-        setDraftMediaType("video");
         resetTransform();
       }
     } finally {
@@ -449,12 +400,11 @@ export function CustomBackgroundEditor({
     const { w, h }  = canvasDimsRef.current;
     onApply({
       uri:          draftUri,
-      mediaType:    draftMediaType,
       scale:        clamped.scale,
       normalizedTx: w > 0 ? clamped.tx / w : 0,
       normalizedTy: h > 0 ? clamped.ty / h : 0,
     });
-  }, [draftUri, draftMediaType, onApply]);
+  }, [draftUri, onApply]);
 
   const hasMedia = draftUri !== null;
 
@@ -537,37 +487,11 @@ export function CustomBackgroundEditor({
                 ]}
                 pointerEvents="none"
               >
-                {draftMediaType === "image" ? (
-                  // ── Photo ───────────────────────────────────────────────
-                  <Image
-                    source={{ uri: draftUri! }}
-                    style={StyleSheet.absoluteFill}
-                    contentFit="cover"
-                  />
-                ) : Platform.OS === "web" ? (
-                  // ── Video (web) — raw <video> element via createElement ─
-                  <View style={StyleSheet.absoluteFill}>
-                    {React.createElement("video", {
-                      src: draftUri,
-                      autoPlay: true,
-                      loop: true,
-                      muted: true,
-                      playsInline: true,
-                      controls: false,
-                      style: {
-                        position: "absolute" as const,
-                        top: 0, left: 0,
-                        width: "100%", height: "100%",
-                        objectFit: "cover" as const,
-                        pointerEvents: "none" as const,
-                      },
-                    })}
-                  </View>
-                ) : (
-                  // ── Video (native) — expo-av, keyed on URI so the
-                  //    player is fully recreated when the user picks a new clip.
-                  <NativeVideoPreview key={draftUri} uri={draftUri!} />
-                )}
+                <Image
+                  source={{ uri: draftUri! }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                />
               </Animated.View>
             )}
 
@@ -620,7 +544,7 @@ export function CustomBackgroundEditor({
                   />
                 </View>
                 <Text style={styles.placeholderText}>
-                  Your photo or video{"\n"}will appear here
+                  Your photo{"\n"}will appear here
                 </Text>
                 <Text style={styles.placeholderHint}>
                   Choose one below to get started
@@ -640,7 +564,7 @@ export function CustomBackgroundEditor({
           <TouchableOpacity
             onPress={pickImage}
             activeOpacity={0.65}
-            style={[styles.pickerRow, styles.pickerRowBorder]}
+            style={styles.pickerRow}
             disabled={picking}
           >
             <SymbolIcon
@@ -651,29 +575,6 @@ export function CustomBackgroundEditor({
             />
             <Text style={[styles.pickerRowLabel, picking && styles.pickerRowLabelDim]}>
               Choose Photo
-            </Text>
-            <SymbolIcon
-              name="chevron.right"
-              fallbackIonicon="chevron-forward"
-              size={14}
-              color="#525252"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={pickVideo}
-            activeOpacity={0.65}
-            style={styles.pickerRow}
-            disabled={picking}
-          >
-            <SymbolIcon
-              name="video"
-              fallbackIonicon="videocam-outline"
-              size={19}
-              color={picking ? "#3a3a3c" : "#e8c078"}
-            />
-            <Text style={[styles.pickerRowLabel, picking && styles.pickerRowLabelDim]}>
-              Choose Video
             </Text>
             <SymbolIcon
               name="chevron.right"
@@ -820,10 +721,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 15,
     gap: 12,
-  },
-  pickerRowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.08)",
   },
   pickerRowLabel: {
     flex: 1,

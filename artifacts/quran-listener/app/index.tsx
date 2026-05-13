@@ -39,7 +39,6 @@ import { MarqueeText } from "@/components/MarqueeText";
 import { ReciterSheet } from "@/components/ReciterSheet";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SurahPicker } from "@/components/SurahPicker";
-import { VideoBackground } from "@/components/VideoBackground";
 import { AMBIENT_OPTIONS, type AmbientId, getAmbient } from "@/data/ambient";
 import { getBackground } from "@/data/backgrounds";
 import {
@@ -1422,15 +1421,14 @@ export default function PlayerScreen() {
 
   const hasBg =
     !!activeBgOpt.source ||
-    !!activeBgOpt.videoUrl ||
     (activeBg === "custom" && settings.customBackground != null);
 
   // When a background is active the secondary-label grey (#8e8e93) can
-  // disappear into the dimmed video frame.  Lightening it slightly when a
+  // disappear into the dimmed background image. Lightening it slightly when a
   // background is shown keeps the contrast ratio above Apple's 4.5:1
   // recommendation for secondary text on dark surfaces. Combined with the
   // text-shadow on every secondary style, this covers both dim-on and
-  // dim-off states across all five video backgrounds.
+  // dim-off states across all backgrounds.
   const secondaryOverride = hasBg
     ? ({ color: settings.backgroundDim ? "#b0b0b8" : "#aeaeb2" } as const)
     : undefined;
@@ -1453,8 +1451,6 @@ export default function PlayerScreen() {
             screenWidth={width}
             screenHeight={screenHeight}
           />
-        ) : activeBgOpt.videoUrl ? (
-          <VideoBackground url={activeBgOpt.videoUrl} />
         ) : hasBg && activeBgOpt.source ? (
           <Image
             source={activeBgOpt.source}
@@ -2459,8 +2455,8 @@ const styles = StyleSheet.create({
 });
 
 // ─── CustomBgLayer ───────────────────────────────────────────────────────────
-// Renders the user's custom background (image or video) in the player using
-// the saved scale and normalized pan offsets.  normalizedTx/Y are fractions of
+// Renders the user's custom background photo in the player using
+// the saved scale and normalized pan offsets. normalizedTx/Y are fractions of
 // screen width/height so the composition is identical across devices.
 
 function CustomBgLayer({
@@ -2474,44 +2470,6 @@ function CustomBgLayer({
 }) {
   const tx = bg.normalizedTx * screenWidth;
   const ty = bg.normalizedTy * screenHeight;
-
-  if (bg.mediaType === "video" && Platform.OS === "web") {
-    return (
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            transform: [
-              { scale: bg.scale },
-              { translateX: tx },
-              { translateY: ty },
-            ],
-          },
-        ]}
-      >
-        {React.createElement("video", {
-          src: bg.uri,
-          autoPlay: true,
-          loop: true,
-          muted: true,
-          playsInline: true,
-          controls: false,
-          disablePictureInPicture: true,
-          disableRemotePlayback: true,
-          tabIndex: -1,
-          style: {
-            position: "absolute" as const,
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover" as const,
-            pointerEvents: "none" as const,
-          },
-        })}
-      </View>
-    );
-  }
 
   return (
     <Image

@@ -98,13 +98,12 @@ export const getArabicFont = (id: ArabicFontId): ArabicFontOption =>
   ARABIC_FONTS.find((f) => f.id === id) ?? ARABIC_FONTS[0];
 
 /**
- * Persisted data for a user-uploaded custom background.
+ * Persisted data for a user-uploaded custom background photo.
  *
  * - `uri`          : file:// URI (native) or base64 data URL (web images).
  *                    Blob URLs from a previous web session are discarded on
  *                    load since they do not survive page reload.
- * - `mediaType`    : 'image' or 'video'
- * - `scale`        : zoom factor applied to the media (≥ 1.0)
+ * - `scale`        : zoom factor applied to the image (≥ 1.0)
  * - `normalizedTx` : horizontal pan offset as a fraction of screen width
  * - `normalizedTy` : vertical pan offset as a fraction of screen height
  *
@@ -113,7 +112,6 @@ export const getArabicFont = (id: ArabicFontId): ArabicFontOption =>
  */
 export interface CustomBg {
   uri: string;
-  mediaType: "image" | "video";
   scale: number;
   normalizedTx: number;
   normalizedTy: number;
@@ -229,7 +227,8 @@ const isValidFontScale = (v: unknown): v is ArabicFontScale =>
 
 /**
  * Validate and sanitise a stored customBackground payload.
- * Blob: URLs from a previous web session are stale and discarded.
+ * Blob URLs from a previous web session are stale and discarded.
+ * Previously stored video custom backgrounds are discarded.
  */
 const coerceCustomBackground = (v: unknown): CustomBg | null => {
   if (!v || typeof v !== "object") return null;
@@ -237,10 +236,10 @@ const coerceCustomBackground = (v: unknown): CustomBg | null => {
   if (typeof o.uri !== "string" || !o.uri) return null;
   // Blob URLs are session-only on web — discard them on reload
   if (o.uri.startsWith("blob:")) return null;
-  if (o.mediaType !== "image" && o.mediaType !== "video") return null;
+  // Video custom backgrounds are no longer supported — discard them
+  if (o.mediaType === "video") return null;
   return {
     uri: o.uri,
-    mediaType: o.mediaType as "image" | "video",
     scale: typeof o.scale === "number" && o.scale >= 1 ? o.scale : 1,
     normalizedTx: typeof o.normalizedTx === "number" ? o.normalizedTx : 0,
     normalizedTy: typeof o.normalizedTy === "number" ? o.normalizedTy : 0,
