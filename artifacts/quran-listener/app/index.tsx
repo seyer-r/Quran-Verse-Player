@@ -674,6 +674,10 @@ export default function PlayerScreen() {
       useNativeDriver: false,
     }).start();
   }, [progress, animatedProgress]);
+  // Declared here (before the useEffect that depends on it) to avoid a
+  // temporal dead zone error — const is not hoisted.
+  const overallProgress =
+    ((index + Math.min(progress, 100) / 100) / Math.max(1, ayahs.length)) * 100;
   useEffect(() => {
     Animated.timing(animatedOverallProgress, {
       toValue: overallProgress,
@@ -1462,11 +1466,6 @@ export default function PlayerScreen() {
   const secondaryOverride = hasBg
     ? ({ color: settings.backgroundDim ? "#b0b0b8" : "#aeaeb2" } as const)
     : undefined;
-
-  // Overall progress across the whole surah (only used for long surahs that
-  // fall back to a single progress bar).
-  const overallProgress =
-    ((index + Math.min(progress, 100) / 100) / Math.max(1, ayahs.length)) * 100;
 
   return (
     <View style={styles.root}>
