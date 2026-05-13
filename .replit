@@ -29,7 +29,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd artifacts/quran-listener && pnpm exec expo start --web --port 5000"
+args = "cd artifacts/quran-listener && PORT=5000 pnpm run dev"
 waitForPort = 5000
 
 [agent]
@@ -43,10 +43,6 @@ timeoutMs = 20000
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
 
 [[ports]]
 localPort = 8082
