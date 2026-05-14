@@ -442,9 +442,12 @@ const styles = StyleSheet.create({
   previewText: {
     fontSize: 30,
     lineHeight: 52,
-    color: "rgba(255,255,255,0.22)",
+    color: "rgba(255,255,255,0.88)",
     textAlign: "center",
     writingDirection: "rtl",
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
   },
   placeholder: {
     ...StyleSheet.absoluteFillObject,
