@@ -1,4 +1,3 @@
-import { AudioBars } from "@/components/AudioBars";
 import { SymbolIcon } from "@/components/SymbolIcon";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
@@ -1674,6 +1673,30 @@ export default function PlayerScreen() {
             </TouchableOpacity>
           )}
 
+          {/* Ayah scrubber */}
+          <View style={styles.scrubberRow}>
+            {ayahs.length <= 20 ? (
+              ayahs.map((a, i) => (
+                <TouchableOpacity
+                  key={a.number}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handlePickPosition(surah.number, i + 1); }}
+                  hitSlop={6}
+                  style={styles.scrubberDotWrap}
+                >
+                  <View style={[
+                    styles.scrubberDot,
+                    i < index && styles.scrubberDotPast,
+                    i === index && styles.scrubberDotActive,
+                  ]} />
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.scrubberTrack}>
+                <View style={[styles.scrubberFill, { width: `${((index + 1) / ayahs.length) * 100}%` as any }]} />
+              </View>
+            )}
+          </View>
+
           <View style={styles.controlsRow}>
             <TouchableOpacity
               style={styles.reciterCol}
@@ -1685,10 +1708,6 @@ export default function PlayerScreen() {
               accessibilityLabel={`Reciter: ${getReciter(settings.reciterId).name}. Tap to change.`}
               hitSlop={6}
             >
-              <View style={styles.reciterEyebrowRow}>
-                <AudioBars playing={isPlaying} />
-                <Text style={[styles.reciterEyebrow, secondaryOverride]}>Reciter</Text>
-              </View>
               <View style={styles.reciterNameRow}>
                 <MarqueeText style={styles.reciterName}>
                   {getReciter(settings.reciterId).name}
@@ -1794,12 +1813,24 @@ export default function PlayerScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.restartCol}>
+            <View style={styles.rightCol}>
               <TouchableOpacity
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setRepeatAyah(!settings.repeatAyah);
+                  const speeds = PLAYBACK_SPEEDS;
+                  const idx = speeds.indexOf(settings.playbackSpeed);
+                  setPlaybackSpeed(speeds[(idx + 1) % speeds.length]);
                 }}
+                hitSlop={8}
+                activeOpacity={0.7}
+                accessibilityLabel="Playback speed"
+              >
+                <View style={styles.speedPill}>
+                  <Text style={styles.speedPillText}>{settings.playbackSpeed}×</Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setRepeatAyah(!settings.repeatAyah); }}
                 hitSlop={8}
                 activeOpacity={0.6}
                 accessibilityLabel={settings.repeatAyah ? "Stop repeating" : "Repeat ayah"}
@@ -1810,19 +1841,6 @@ export default function PlayerScreen() {
                   fallbackIonicon="repeat"
                   size={20}
                   color={settings.repeatAyah ? "#e8c078" : "#8e8e93"}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={restart}
-                hitSlop={8}
-                activeOpacity={0.6}
-                accessibilityLabel="Restart surah"
-              >
-                <SymbolIcon
-                  name="arrow.counterclockwise"
-                  fallbackIonicon="refresh"
-                  size={22}
-                  color="#8e8e93"
                 />
               </TouchableOpacity>
             </View>
@@ -1886,7 +1904,7 @@ export default function PlayerScreen() {
           setBackground("custom");
           setCustomBgEditorOpen(false);
         }}
-        previewArabicText={ayahs[index]?.arabic}
+        previewArabicText={getSurah(1).ayahs[0].arabic + ayahMarker(1)}
         previewFontFamily={arabicFontFamily}
       />
 
@@ -2263,21 +2281,6 @@ const styles = StyleSheet.create({
     // "now playing" info panel is similarly constrained (~130–160 pt wide).
     maxWidth: 140,
     minWidth: 0,
-    minHeight: 44,
-    justifyContent: "center",
-  },
-  reciterEyebrowRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  reciterEyebrow: {
-    fontSize: 11,
-    letterSpacing: 0,
-    color: "#8e8e93",
-    fontWeight: "400",
-    textShadowColor: "rgba(0,0,0,0.75)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
   },
   reciterNameRow: {
     flexDirection: "row",
@@ -2313,12 +2316,66 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 4 },
   },
-  restartCol: {
+  rightCol: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 14,
+  },
+  scrubberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+    flexWrap: "wrap",
+  },
+  scrubberDotWrap: {
+    padding: 4,
+  },
+  scrubberDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  scrubberDotPast: {
+    backgroundColor: "rgba(255,255,255,0.45)",
+  },
+  scrubberDotActive: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#fff",
+  },
+  scrubberTrack: {
+    flex: 1,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    overflow: "hidden",
+    marginHorizontal: 4,
+  },
+  scrubberFill: {
+    height: "100%" as any,
+    backgroundColor: "rgba(255,255,255,0.7)",
+    borderRadius: 999,
+  },
+  speedPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  speedPillText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#d4d4d4",
+    letterSpacing: -0.2,
   },
   errorCaption: {
     textAlign: "center",
