@@ -1,0 +1,43 @@
+name: QuranVersePlayer
+options:
+  bundleIdPrefix: com.quranverseplayer
+  deploymentTarget:
+    iOS: "26.0"
+  xcodeVersion: "26"
+  createIntermediateGroups: true
+
+targets:
+  QuranVersePlayer:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    resources:
+      - path: Resources
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        PRODUCT_BUNDLE_IDENTIFIER: com.quranverseplayer.app
+        PRODUCT_NAME: QuranVersePlayer
+        INFOPLIST_FILE: Info.plist
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Quran Verse Player
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIUserInterfaceStyle: Dark
+        AVAudioSessionCategory: AVAudioSessionCategoryPlayback
+        UIBackgroundModes:
+          - audio
+        UIAppFonts:
+          - UthmanicHafsV22.ttf
+          - UthmanicHafsV18.ttf
+          - AmiriQuran.ttf
+          - SurahNamesV1.ttf
+        NSMicrophoneUsageDescription: Not used
