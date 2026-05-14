@@ -1,5 +1,4 @@
 import { SymbolIcon } from "@/components/SymbolIcon";
-import { VideoSwatch } from "@/components/VideoBackground";
 import {
   ARABIC_FONT_SCALES,
   type ArabicFontScale,
@@ -265,27 +264,12 @@ export function SettingsPanel({
                     style={styles.bgItem}
                   >
                     <View style={styles.bgSwatch}>
-                      {customBackground?.mediaType === "image" &&
-                      customBackground.uri ? (
+                      {customBackground?.uri ? (
                         <Image
                           source={{ uri: customBackground.uri }}
                           style={StyleSheet.absoluteFill}
                           contentFit="cover"
                         />
-                      ) : customBackground?.mediaType === "video" ? (
-                        <View
-                          style={[
-                            StyleSheet.absoluteFill,
-                            styles.bgCustomVideoThumb,
-                          ]}
-                        >
-                          <SymbolIcon
-                            name="video.fill"
-                            fallbackIonicon="videocam"
-                            size={18}
-                            color="#525252"
-                          />
-                        </View>
                       ) : (
                         <View
                           style={[
@@ -342,10 +326,7 @@ export function SettingsPanel({
                     style={styles.bgItem}
                   >
                     <View style={styles.bgSwatch}>
-                      {bg.videoUrl ? (
-                        // Live video swatch — plays a tiny looping preview
-                        <VideoSwatch url={bg.videoUrl} />
-                      ) : bg.source ? (
+                      {bg.source ? (
                         <Image
                           source={bg.source}
                           style={StyleSheet.absoluteFill}
@@ -358,12 +339,6 @@ export function SettingsPanel({
                             { backgroundColor: "#000" },
                           ]}
                         />
-                      )}
-                      {/* "Live" badge on video backgrounds */}
-                      {bg.videoUrl && !selected && (
-                        <View style={styles.bgLiveBadge} pointerEvents="none">
-                          <Text style={styles.bgLiveBadgeText}>LIVE</Text>
-                        </View>
                       )}
                       {selected && (
                         <View style={styles.bgSelectedRing} pointerEvents="none" />
@@ -925,11 +900,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.18)",
     borderRadius: 12,
   },
-  bgCustomVideoThumb: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#141414",
-  },
   bgItem: {
     alignItems: "center",
     width: 64,
@@ -965,21 +935,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#e8c078",
     alignItems: "center",
     justifyContent: "center",
-  },
-  bgLiveBadge: {
-    position: "absolute",
-    top: 6,
-    left: 6,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  bgLiveBadgeText: {
-    fontSize: 8,
-    fontWeight: "700",
-    color: "#e8c078",
-    letterSpacing: 0.5,
   },
   bgLabel: {
     marginTop: 8,

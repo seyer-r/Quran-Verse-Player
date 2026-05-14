@@ -1,6 +1,5 @@
 import { AudioBars } from "@/components/AudioBars";
 import { SymbolIcon } from "@/components/SymbolIcon";
-import { SurahNameGlyph } from "@/components/SurahNameGlyph";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -10,7 +9,7 @@ import {
   setAudioModeAsync,
   type AudioPlayer,
 } from "expo-audio";
-import React, {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -39,7 +38,6 @@ import { MarqueeText } from "@/components/MarqueeText";
 import { ReciterSheet } from "@/components/ReciterSheet";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SurahPicker } from "@/components/SurahPicker";
-import { VideoBackground } from "@/components/VideoBackground";
 import { AMBIENT_OPTIONS, type AmbientId, getAmbient } from "@/data/ambient";
 import { getBackground } from "@/data/backgrounds";
 import {
@@ -1454,7 +1452,6 @@ export default function PlayerScreen() {
 
   const hasBg =
     !!activeBgOpt.source ||
-    !!activeBgOpt.videoUrl ||
     (activeBg === "custom" && settings.customBackground != null);
 
   // When a background is active the secondary-label grey (#8e8e93) can
@@ -1480,8 +1477,6 @@ export default function PlayerScreen() {
             screenWidth={width}
             screenHeight={screenHeight}
           />
-        ) : activeBgOpt.videoUrl ? (
-          <VideoBackground url={activeBgOpt.videoUrl} />
         ) : hasBg && activeBgOpt.source ? (
           <Image
             source={activeBgOpt.source}
@@ -1579,17 +1574,6 @@ export default function PlayerScreen() {
               </View>
             </TouchableOpacity>
             <View style={styles.headerRight}>
-              <View
-                accessibilityElementsHidden={true}
-                importantForAccessibility="no-hide-descendants"
-              >
-                <SurahNameGlyph
-                  surah={displayedSurah}
-                  size={28}
-                  color="#f5f5f5"
-                  style={styles.surahArabicGlyph}
-                />
-              </View>
               <TouchableOpacity
                 onPress={() => {
                   pokeControls();
@@ -2217,9 +2201,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  surahArabicGlyph: {
-    maxWidth: 190,
-  },
   iconBtn: {
     padding: 8,
     borderRadius: 999,
@@ -2525,44 +2506,6 @@ function CustomBgLayer({
 }) {
   const tx = bg.normalizedTx * screenWidth;
   const ty = bg.normalizedTy * screenHeight;
-
-  if (bg.mediaType === "video" && Platform.OS === "web") {
-    return (
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            transform: [
-              { scale: bg.scale },
-              { translateX: tx },
-              { translateY: ty },
-            ],
-          },
-        ]}
-      >
-        {React.createElement("video", {
-          src: bg.uri,
-          autoPlay: true,
-          loop: true,
-          muted: true,
-          playsInline: true,
-          controls: false,
-          disablePictureInPicture: true,
-          disableRemotePlayback: true,
-          tabIndex: -1,
-          style: {
-            position: "absolute" as const,
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover" as const,
-            pointerEvents: "none" as const,
-          },
-        })}
-      </View>
-    );
-  }
 
   return (
     <Image

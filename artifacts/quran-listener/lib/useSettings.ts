@@ -113,7 +113,6 @@ export const getArabicFont = (id: ArabicFontId): ArabicFontOption =>
  */
 export interface CustomBg {
   uri: string;
-  mediaType: "image" | "video";
   scale: number;
   normalizedTx: number;
   normalizedTy: number;
@@ -237,10 +236,8 @@ const coerceCustomBackground = (v: unknown): CustomBg | null => {
   if (typeof o.uri !== "string" || !o.uri) return null;
   // Blob URLs are session-only on web — discard them on reload
   if (o.uri.startsWith("blob:")) return null;
-  if (o.mediaType !== "image" && o.mediaType !== "video") return null;
   return {
     uri: o.uri,
-    mediaType: o.mediaType as "image" | "video",
     scale: typeof o.scale === "number" && o.scale >= 1 ? o.scale : 1,
     normalizedTx: typeof o.normalizedTx === "number" ? o.normalizedTx : 0,
     normalizedTy: typeof o.normalizedTy === "number" ? o.normalizedTy : 0,
