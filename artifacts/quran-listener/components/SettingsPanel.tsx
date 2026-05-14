@@ -1,4 +1,5 @@
 import { SymbolIcon } from "@/components/SymbolIcon";
+import { TranslationPicker } from "@/components/TranslationPicker";
 import {
   ARABIC_FONT_SCALES,
   type ArabicFontScale,
@@ -65,8 +66,8 @@ interface SettingsPanelProps {
   onOpenCustomBgEditor: () => void;
   translationId: number;
   showTranslation: boolean;
+  onTranslationIdChange: (id: number) => void;
   onShowTranslationChange: (show: boolean) => void;
-  onOpenTranslationPicker: () => void;
   /** Called once the close animation finishes AND the modal is unmounted. */
   onFullyClosed?: () => void;
 }
@@ -108,13 +109,14 @@ export function SettingsPanel({
   onOpenCustomBgEditor,
   translationId,
   showTranslation,
+  onTranslationIdChange,
   onShowTranslationChange,
-  onOpenTranslationPicker,
   onFullyClosed,
 }: SettingsPanelProps) {
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { translations: allTranslations } = useQFAllTranslations();
+  const [translationPickerOpen, setTranslationPickerOpen] = useState(false);
   const sheetHeight = screenHeight * SHEET_MAX_HEIGHT_FRACTION;
 
   // Keep the modal mounted while the close animation runs.
@@ -453,7 +455,7 @@ export function SettingsPanel({
               {showTranslation && (
                 <TouchableOpacity
                   activeOpacity={0.6}
-                  onPress={onOpenTranslationPicker}
+                  onPress={() => setTranslationPickerOpen(true)}
                   style={styles.row}
                 >
                   <View style={styles.rowIcon}>
@@ -692,6 +694,14 @@ export function SettingsPanel({
             </View>
           </ScrollView>
         </Animated.View>
+
+        {/* Translation sub-screen — slides in over the sheet content */}
+        <TranslationPicker
+          open={translationPickerOpen}
+          currentId={translationId}
+          onSelect={onTranslationIdChange}
+          onBack={() => setTranslationPickerOpen(false)}
+        />
       </View>
     </Modal>
   );

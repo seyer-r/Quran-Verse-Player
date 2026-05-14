@@ -36,7 +36,6 @@ import { CustomBackgroundEditor } from "@/components/CustomBackgroundEditor";
 import { MarqueeText } from "@/components/MarqueeText";
 import { ReciterSheet } from "@/components/ReciterSheet";
 import { SettingsPanel } from "@/components/SettingsPanel";
-import { TranslationPicker } from "@/components/TranslationPicker";
 import { SurahPicker } from "@/components/SurahPicker";
 import { AMBIENT_OPTIONS, type AmbientId, getAmbient } from "@/data/ambient";
 import { getBackground } from "@/data/backgrounds";
@@ -161,7 +160,6 @@ export default function PlayerScreen() {
   const [audioError, setAudioError] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [customBgEditorOpen, setCustomBgEditorOpen] = useState(false);
-  const [translationPickerOpen, setTranslationPickerOpen] = useState(false);
   // Tracks whether the CustomBackgroundEditor should open once SettingsPanel
   // has fully unmounted. Using a ref avoids stale-closure issues in callbacks.
   const pendingCustomBgEditor = useRef(false);
@@ -1878,8 +1876,8 @@ export default function PlayerScreen() {
         onPlaybackSpeedChange={setPlaybackSpeed}
         translationId={settings.translationId}
         showTranslation={settings.showTranslation}
+        onTranslationIdChange={setTranslationId}
         onShowTranslationChange={setShowTranslation}
-        onOpenTranslationPicker={() => setTranslationPickerOpen(true)}
         onOpenCustomBgEditor={() => {
           // Signal that we want the editor to open, then start closing settings.
           // onFullyClosed (below) will actually open it once the modal is gone.
@@ -1908,13 +1906,6 @@ export default function PlayerScreen() {
         }}
         previewArabicText={getSurah(1).ayahs[0].arabic + ayahMarker(1)}
         previewFontFamily={arabicFontFamily}
-      />
-
-      <TranslationPicker
-        open={translationPickerOpen}
-        currentId={settings.translationId}
-        onSelect={setTranslationId}
-        onClose={() => setTranslationPickerOpen(false)}
       />
 
       <SurahPicker
