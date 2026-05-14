@@ -1,4 +1,3 @@
-import MaskedView from "@react-native-masked-view/masked-view";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   useEffect,
@@ -17,12 +16,12 @@ import {
 } from "react-native";
 
 // ── Timing constants ─────────────────────────────────────────────────────────
-const START_DELAY_MS    = 1500; // pause before first scroll
-const END_DELAY_MS      = 1000; // pause at each end before reversing
+const START_DELAY_MS    = 1500;
+const END_DELAY_MS      = 1000;
 const PIXELS_PER_SECOND = 40;
 const FADE_WIDTH        = 18;
 
-// Web CSS mask — true transparency regardless of background
+// Web CSS mask — true transparency regardless of background colour
 const FADE_MASK = `linear-gradient(to right, transparent 0%, black ${FADE_WIDTH}px, black calc(100% - ${FADE_WIDTH}px), transparent 100%)`;
 
 const MEASURER_MAX_W = 2000;
@@ -71,7 +70,6 @@ export function MarqueeText({ children, style }: Props) {
 
   // ── Ping-pong animation ───────────────────────────────────────────────────
   // Scrolls to the end with ease-in-out, pauses, reverses back, pauses, repeats.
-  // Matches Apple Music's Now Playing scroll behaviour exactly.
   useEffect(() => {
     if (!overflow || travel <= 0) {
       animRef.current?.stop();
@@ -85,25 +83,14 @@ export function MarqueeText({ children, style }: Props) {
 
     const anim = Animated.loop(
       Animated.sequence([
-        // Initial hold at start
         Animated.delay(START_DELAY_MS),
-        // Scroll to end
         Animated.timing(translateX, {
-          toValue:         -travel,
-          duration,
-          easing,
-          useNativeDriver: true,
+          toValue: -travel, duration, easing, useNativeDriver: true,
         }),
-        // Hold at end
         Animated.delay(END_DELAY_MS),
-        // Scroll back to start
         Animated.timing(translateX, {
-          toValue:         0,
-          duration,
-          easing,
-          useNativeDriver: true,
+          toValue: 0, duration, easing, useNativeDriver: true,
         }),
-        // Hold at start before next cycle
         Animated.delay(END_DELAY_MS),
       ]),
     );
@@ -113,8 +100,29 @@ export function MarqueeText({ children, style }: Props) {
     return () => anim.stop();
   }, [overflow, travel, translateX]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  const textNode = (
+  // ── Shared invisible measurer ─────────────────────────────────────────────
+  const measurer = (
+    <View style={styles.measurerWrap} pointerEvents="none" accessible={false}>
+      <Text
+        style={[style, styles.text]}
+        numberOfLines={1}
+        onTextLayout={
+          Platform.OS !== "web"
+            ? (e) => {
+                const w = e.nativeEvent.lines[0]?.width ?? 0;
+                if (w > 0) setNaturalW(Math.ceil(w));
+              }
+            : undefined
+        }
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+      >
+        {children}
+      </Text>
+    </View>
+  );
+
+  const scrollingText = (
     <Animated.View style={{ transform: [{ translateX }] }}>
       <Text style={[style, styles.text]} numberOfLines={1}>
         {children}
@@ -124,97 +132,51 @@ export function MarqueeText({ children, style }: Props) {
 
   if (!overflow) {
     return (
-      <View
-        style={styles.root}
-        onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}
-      >
-        {/* Invisible measurer */}
-        <View style={styles.measurerWrap} pointerEvents="none" accessible={false}>
-          <Text
-            style={[style, styles.text]}
-            numberOfLines={1}
-            onTextLayout={
-              Platform.OS !== "web"
-                ? (e) => {
-                    const w = e.nativeEvent.lines[0]?.width ?? 0;
-                    if (w > 0) setNaturalW(Math.ceil(w));
-                  }
-                : undefined
-            }
-            accessibilityElementsHidden
-            importantForAccessibility="no"
-          >
-            {children}
-          </Text>
-        </View>
-        <Text style={[style, styles.text]} numberOfLines={1}>
-          {children}
-        </Text>
+      <View style={styles.root} onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}>
+        {measurer}
+        <Text style={[style, styles.text]} numberOfLines={1}>{children}</Text>
       </View>
     );
   }
 
-  // Overflowing — apply fade mask
+  // ── Web: CSS mask for true transparency ───────────────────────────────────
   if (Platform.OS === "web") {
     return (
-      <View
-        style={styles.root}
-        onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}
-      >
-        <View style={styles.measurerWrap} pointerEvents="none" accessible={false}>
-          <Text style={[style, styles.text]} numberOfLines={1}>
-            {children}
-          </Text>
-        </View>
+      <View style={styles.root} onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}>
+        {measurer}
         <View
-          style={[
-            styles.clip,
-            {
-              maskImage:       FADE_MASK,
-              WebkitMaskImage: FADE_MASK,
-            } as object,
-          ]}
+          style={[styles.clip, { maskImage: FADE_MASK, WebkitMaskImage: FADE_MASK } as object]}
         >
-          {textNode}
+          {scrollingText}
         </View>
       </View>
     );
   }
 
-  // Native — MaskedView for true transparency masking
+  // ── Native: overflow:hidden clip + subtle gradient overlays ───────────────
+  // MaskedView requires a native build so we use a clean clip instead.
+  // The gradient overlays fade toward a near-transparent dark tint rather
+  // than solid black, so they stay subtle across all backgrounds.
   return (
-    <View
-      style={styles.root}
-      onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}
-    >
-      <View style={styles.measurerWrap} pointerEvents="none" accessible={false}>
-        <Text
-          style={[style, styles.text]}
-          numberOfLines={1}
-          onTextLayout={(e) => {
-            const w = e.nativeEvent.lines[0]?.width ?? 0;
-            if (w > 0) setNaturalW(Math.ceil(w));
-          }}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        >
-          {children}
-        </Text>
+    <View style={styles.root} onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}>
+      {measurer}
+      <View style={styles.clip}>
+        {scrollingText}
+        <LinearGradient
+          pointerEvents="none"
+          colors={["rgba(0,0,0,0.55)", "rgba(0,0,0,0)"]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={[styles.fadeEdge, styles.fadeLeft]}
+        />
+        <LinearGradient
+          pointerEvents="none"
+          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={[styles.fadeEdge, styles.fadeRight]}
+        />
       </View>
-      <MaskedView
-        style={styles.clip}
-        maskElement={
-          <LinearGradient
-            colors={["transparent", "#000", "#000", "transparent"]}
-            locations={[0, FADE_WIDTH / containerW, 1 - FADE_WIDTH / containerW, 1]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={StyleSheet.absoluteFill}
-          />
-        }
-      >
-        {textNode}
-      </MaskedView>
     </View>
   );
 }
@@ -239,4 +201,12 @@ const styles = StyleSheet.create({
   text: {
     flexShrink: 0,
   },
+  fadeEdge: {
+    position: "absolute",
+    top:      0,
+    bottom:   0,
+    width:    FADE_WIDTH,
+  },
+  fadeLeft:  { left:  0 },
+  fadeRight: { right: 0 },
 });
