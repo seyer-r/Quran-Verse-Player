@@ -56,6 +56,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "@react-native-masked-view/masked-view": "^0.3.2",
     "expo-audio": "1.1.0",
     "expo-av": "^16.0.8"
   }
