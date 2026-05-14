@@ -166,6 +166,7 @@ export default function PlayerScreen() {
   // Auto-hide UI chrome (header, ayah counter, footer controls) — like a
   // video player. Tap anywhere to toggle. Only auto-hides while playing.
   const [chromeVisible, setChromeVisible] = useState(true);
+  const chromeVisibleRef = useRef(true);
   const chromeOpacity = useRef(new Animated.Value(1)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const HIDE_DELAY_MS = 5000;
@@ -315,15 +316,19 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [scheduleHide]);
 
-  // Tap on the empty stage / verse area: always reveal chrome and reset the
-  // auto-hide timer. A single tap shows; the 5 s timer then hides. This
-  // matches every Apple video-player app (TV, YouTube on iOS) — tap reveals,
-  // inactivity hides. A toggle was too easy to trigger accidentally while reading.
+  // Tap on the empty stage / verse area: toggle chrome visibility.
+  // Tap to hide, tap to show. Auto-hides after 5 s while playing.
   const tapBackground = useCallback(() => {
-    pokeControls();
-  }, [pokeControls]);
+    if (chromeVisibleRef.current) {
+      clearHideTimer();
+      setChromeVisible(false);
+    } else {
+      pokeControls();
+    }
+  }, [pokeControls, clearHideTimer]);
 
   useEffect(() => {
+    chromeVisibleRef.current = chromeVisible;
     Animated.timing(chromeOpacity, {
       toValue: chromeVisible ? 1 : 0,
       duration: 280,
