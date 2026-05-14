@@ -123,8 +123,8 @@ export function MarqueeText({ children, style }: Props) {
   );
 
   const scrollingText = (
-    <Animated.View style={{ transform: [{ translateX }] }}>
-      <Text style={[style, styles.text]} numberOfLines={1}>
+    <Animated.View style={[styles.scrollRow, { transform: [{ translateX }] }]}>
+      <Text style={[style, styles.text]}>
         {children}
       </Text>
     </Animated.View>
@@ -197,6 +197,10 @@ const styles = StyleSheet.create({
   },
   clip: {
     overflow: "hidden",
+  },
+  scrollRow: {
+    flexDirection: "row",
+    alignSelf: "flex-start",
   },
   text: {
     flexShrink: 0,
