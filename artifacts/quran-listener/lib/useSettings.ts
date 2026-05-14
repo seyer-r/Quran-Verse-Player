@@ -18,6 +18,10 @@ import {
   type ReciterId,
 } from "@/data/reciters";
 import {
+  DEFAULT_QF_TRANSLATION_ID,
+  QF_TRANSLATIONS,
+} from "@/lib/quranFoundationApi";
+import {
   DEFAULT_TRANSITION,
   type TransitionMode,
   TRANSITIONS,
@@ -31,6 +35,7 @@ export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 export const ARABIC_FONT_SCALES = [0.8, 0.9, 1.0, 1.15, 1.3] as const;
 export type ArabicFontScale = (typeof ARABIC_FONT_SCALES)[number];
 
+// v6: Added translationId (QF translation source) and showTranslation toggle.
 // v5: UthmanicHafs v18 has been patched in-place (scripts/patch-font.py) to
 // fix the root cause of the U+25CC dotted-circle rendering bug. The patch
 // applies three coordinated font-table edits:
@@ -45,7 +50,7 @@ export type ArabicFontScale = (typeof ARABIC_FONT_SCALES)[number];
 // ayahs. UthmanicHafs is therefore restored as the app default.
 // Bumping the key resets any stored "amiri" preference from v4 so every
 // user gets the correct Madinah-mushaf typeface out of the box.
-const STORAGE_KEY = "quran-listener-settings-v5";
+const STORAGE_KEY = "quran-listener-settings-v6";
 
 /**
  * Identifier of the Arabic typeface used for the verse body. Both fonts
@@ -166,6 +171,16 @@ export interface Settings {
    * been set. Active only when `background === 'custom'`.
    */
   customBackground: CustomBg | null;
+  /**
+   * Quran Foundation translation ID used to fetch verse translations.
+   * Defaults to 131 (Sahih International).
+   */
+  translationId: number;
+  /**
+   * When true, the English translation is shown below the Arabic verse.
+   * When false, only the Arabic text is displayed.
+   */
+  showTranslation: boolean;
 }
 
 const DEFAULT_AUTOPLAY_NEXT_SURAH = true;
@@ -173,6 +188,7 @@ const DEFAULT_BACKGROUND_DIM = true;
 const DEFAULT_PLAYBACK_SPEED: PlaybackSpeed = 1;
 const DEFAULT_REPEAT_AYAH = false;
 const DEFAULT_ARABIC_FONT_SCALE: ArabicFontScale = 1.0;
+const DEFAULT_SHOW_TRANSLATION = true;
 
 const defaultSettings: Settings = {
   transition: DEFAULT_TRANSITION,
@@ -189,6 +205,8 @@ const defaultSettings: Settings = {
   repeatAyah: DEFAULT_REPEAT_AYAH,
   arabicFontScale: DEFAULT_ARABIC_FONT_SCALE,
   customBackground: null,
+  translationId: DEFAULT_QF_TRANSLATION_ID,
+  showTranslation: DEFAULT_SHOW_TRANSLATION,
 };
 
 const isValidTransition = (v: unknown): v is TransitionMode =>
@@ -223,6 +241,10 @@ const isValidArabicFont = (v: unknown): v is ArabicFontId =>
   typeof v === "string" && ARABIC_FONTS.some((f) => f.id === v);
 const isValidReciter = (v: unknown): v is ReciterId =>
   typeof v === "string" && RECITERS.some((r) => r.id === v);
+const isValidTranslationId = (v: unknown): v is number =>
+  typeof v === "number" && QF_TRANSLATIONS.some((t) => t.id === v);
+const coerceShowTranslation = (v: unknown): boolean =>
+  typeof v === "boolean" ? v : DEFAULT_SHOW_TRANSLATION;
 const isValidFontScale = (v: unknown): v is ArabicFontScale =>
   (ARABIC_FONT_SCALES as readonly number[]).includes(v as number);
 
@@ -288,6 +310,10 @@ export function useSettings() {
               ? parsed.arabicFontScale
               : DEFAULT_ARABIC_FONT_SCALE,
             customBackground: coerceCustomBackground(parsed.customBackground),
+            translationId: isValidTranslationId(parsed.translationId)
+              ? parsed.translationId
+              : DEFAULT_QF_TRANSLATION_ID,
+            showTranslation: coerceShowTranslation(parsed.showTranslation),
           });
         }
       } catch {
@@ -332,6 +358,10 @@ export function useSettings() {
     setSettings((s) => ({ ...s, arabicFontScale }));
   const setCustomBackground = (customBackground: CustomBg | null) =>
     setSettings((s) => ({ ...s, customBackground }));
+  const setTranslationId = (translationId: number) =>
+    setSettings((s) => ({ ...s, translationId }));
+  const setShowTranslation = (showTranslation: boolean) =>
+    setSettings((s) => ({ ...s, showTranslation }));
 
   /**
    * Atomically update both surah and ayah. The ayah is clamped to the new
@@ -370,6 +400,8 @@ export function useSettings() {
     setArabicFont,
     setArabicFontScale,
     setCustomBackground,
+    setTranslationId,
+    setShowTranslation,
     setPosition,
     setAyah,
   };

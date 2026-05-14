@@ -65,6 +65,8 @@ import {
 } from "@/lib/useSettings";
 import { useRecentSurahs } from "@/lib/useRecentSurahs";
 import { useBookmarks } from "@/lib/useBookmarks";
+import { useQFTranslation } from "@/lib/useQFTranslation";
+import { useQFAudio } from "@/lib/useQFAudio";
 
 // For surahs longer than this, the per-ayah segmented progress row would
 // shrink to invisible hairlines. Switch to a single overall progress bar
@@ -95,12 +97,24 @@ export default function PlayerScreen() {
     setBackgroundDim,
     setArabicFontScale,
     setCustomBackground,
+    setTranslationId,
+    setShowTranslation,
     setPosition,
     setAyah: persistAyah,
   } = useSettings();
   const arabicFontFamily = getArabicFont(settings.arabicFont).family;
   const { recentSurahs, recordSurah } = useRecentSurahs();
   const { bookmarks, isBookmarked, toggleBookmark } = useBookmarks();
+
+  // Quran Foundation API — translation (fetched per chapter + translation choice).
+  const { translations: qfTranslations } = useQFTranslation(
+    settings.surah,
+    settings.translationId,
+  );
+
+  // Quran Foundation API — audio URLs (fetched per chapter + reciter).
+  const qfRecitationId = getReciter(settings.reciterId).qfRecitationId;
+  const { audioUrlsRef: qfAudioUrlsRef } = useQFAudio(settings.surah, qfRecitationId);
 
   // Dev-only structural validation of the bundled Quran corpus. Surfaces
   // any drift loudly in the console instead of corrupting the UI silently.
@@ -479,12 +493,15 @@ export default function PlayerScreen() {
     (i: number): AudioPlayer => {
       let p = bundle.players[i];
       if (!p) {
-        p = createAudioPlayer({
-          uri: audioUrlForGlobalAyah(
-            ayahs[i].globalNumber,
-            getReciter(settings.reciterId).cdnIdentifier,
-          ),
-        });
+        const ayah = ayahs[i];
+        const verseKey = `${surah.number}:${ayah.number}`;
+        // Prefer QF audio URL when already fetched; fall back to the CDN pattern.
+        const qfUrl = qfAudioUrlsRef.current?.get(verseKey);
+        const uri = qfUrl ?? audioUrlForGlobalAyah(
+          ayah.globalNumber,
+          getReciter(settings.reciterId).cdnIdentifier,
+        );
+        p = createAudioPlayer({ uri });
         // Apply the current playback rate immediately via ref so the player
         // is ready at the right speed the moment audio starts — without
         // making getPlayer depend on settings.playbackSpeed.
@@ -493,11 +510,11 @@ export default function PlayerScreen() {
       }
       return p;
     },
-    // playbackSpeedRef is intentionally omitted — it's a ref (stable object),
-    // and we read .current at call time. Only bundle/ayahs/reciterId should
-    // trigger a new getPlayer reference.
+    // qfAudioUrlsRef and playbackSpeedRef are intentionally omitted — they
+    // are refs (stable objects) read at call time. Only bundle/ayahs/reciterId
+    // should trigger a new getPlayer reference.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bundle, ayahs, settings.reciterId],
+    [bundle, ayahs, settings.reciterId, surah.number],
   );
 
   const safePlay = (p: AudioPlayer | null | undefined) => {
@@ -1601,15 +1618,19 @@ export default function PlayerScreen() {
             if (!isLive) return null;
             const arFs = computeArabicFontSize(a.arabic.length);
             const arLh = computeArabicLineHeight(arFs, a.arabic.length);
+            // Use QF translation when fetched; fall back to bundled text.
+            const translationText =
+              qfTranslations?.get(a.number) ?? a.translation;
             return (
               <AyahView
                 key={`${surah.number}-${a.number}`}
-                ayah={a}
+                ayah={{ ...a, translation: translationText }}
                 opacity={bundle.opacities[i]}
                 arabicFontFamily={arabicFontFamily}
                 arFs={arFs}
                 arLh={arLh}
                 translationFontSize={translationFontSize}
+                showTranslation={settings.showTranslation}
                 onTap={tapBackground}
                 onLongPress={(pageY) => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -1835,6 +1856,10 @@ export default function PlayerScreen() {
         customBackground={settings.customBackground}
         playbackSpeed={settings.playbackSpeed}
         onPlaybackSpeedChange={setPlaybackSpeed}
+        translationId={settings.translationId}
+        showTranslation={settings.showTranslation}
+        onTranslationIdChange={setTranslationId}
+        onShowTranslationChange={setShowTranslation}
         onOpenCustomBgEditor={() => {
           // Signal that we want the editor to open, then start closing settings.
           // onFullyClosed (below) will actually open it once the modal is gone.
@@ -2453,6 +2478,7 @@ type AyahViewProps = {
   arFs: number;
   arLh: number;
   translationFontSize: number;
+  showTranslation: boolean;
   onTap: () => void;
   onLongPress?: (pageY: number) => void;
 };
@@ -2464,6 +2490,7 @@ function AyahView({
   arFs,
   arLh,
   translationFontSize,
+  showTranslation,
   onTap,
   onLongPress,
 }: AyahViewProps) {
@@ -2556,9 +2583,11 @@ function AyahView({
               {ayah.arabic}
               {ayahMarker(ayah.number)}
             </Text>
-            <Text style={[styles.translation, { fontSize: translationFontSize }]}>
-              {ayah.translation}
-            </Text>
+            {showTranslation && (
+              <Text style={[styles.translation, { fontSize: translationFontSize }]}>
+                {ayah.translation}
+              </Text>
+            )}
           </Pressable>
         </ScrollView>
 

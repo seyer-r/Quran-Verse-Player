@@ -6,6 +6,7 @@ import {
   PLAYBACK_SPEEDS,
   type PlaybackSpeed,
 } from "@/lib/useSettings";
+import { QF_TRANSLATIONS } from "@/lib/quranFoundationApi";
 import { Image } from "expo-image";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -61,6 +62,10 @@ interface SettingsPanelProps {
   onArabicFontScaleChange: (scale: ArabicFontScale) => void;
   onPlaybackSpeedChange: (speed: PlaybackSpeed) => void;
   onOpenCustomBgEditor: () => void;
+  translationId: number;
+  showTranslation: boolean;
+  onTranslationIdChange: (id: number) => void;
+  onShowTranslationChange: (show: boolean) => void;
   /** Called once the close animation finishes AND the modal is unmounted. */
   onFullyClosed?: () => void;
 }
@@ -100,6 +105,10 @@ export function SettingsPanel({
   onArabicFontScaleChange,
   onPlaybackSpeedChange,
   onOpenCustomBgEditor,
+  translationId,
+  showTranslation,
+  onTranslationIdChange,
+  onShowTranslationChange,
   onFullyClosed,
 }: SettingsPanelProps) {
   const { height: screenHeight } = useWindowDimensions();
@@ -406,6 +415,63 @@ export function SettingsPanel({
                   onChange={(v) => onArabicFontScaleChange(v as ArabicFontScale)}
                 />
               </View>
+            </View>
+
+            {/* === TRANSLATION === */}
+            <SectionHeader title="Translation" style={{ marginTop: 28 }} />
+            <View style={styles.group}>
+              {/* Show / hide toggle */}
+              <View style={[styles.row, { paddingVertical: 12 }, styles.rowDivider]}>
+                <View style={styles.rowIcon}>
+                  <SymbolIcon
+                    name="text.bubble"
+                    fallbackIonicon="chatbubble-ellipses-outline"
+                    size={18}
+                    color={showTranslation ? "#f5f5f5" : "#737373"}
+                  />
+                </View>
+                <View style={styles.rowTextWrap}>
+                  <Text style={[styles.rowLabel, showTranslation && styles.rowLabelSelected]}>
+                    Show translation
+                  </Text>
+                  <Text style={styles.rowSubLabel}>
+                    Display the English translation below each verse.
+                  </Text>
+                </View>
+                <View style={styles.rowAccessory}>
+                  <ToggleSwitch
+                    value={showTranslation}
+                    onValueChange={onShowTranslationChange}
+                    accessibilityLabel="Show translation"
+                  />
+                </View>
+              </View>
+
+              {/* Translation picker — only shown when translation is visible */}
+              {showTranslation && QF_TRANSLATIONS.map((t, i) => {
+                const selected = t.id === translationId;
+                const isLast = i === QF_TRANSLATIONS.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    onPress={() => onTranslationIdChange(t.id)}
+                    activeOpacity={0.6}
+                    style={[styles.row, !isLast && styles.rowDivider]}
+                  >
+                    <View style={styles.rowTextWrap}>
+                      <Text style={[styles.rowLabel, selected && styles.rowLabelSelected]}>
+                        {t.name}
+                      </Text>
+                      <Text style={styles.rowSubLabel}>{t.language}</Text>
+                    </View>
+                    <View style={styles.rowAccessory}>
+                      {selected && (
+                        <SymbolIcon name="checkmark" fallbackIonicon="checkmark" size={17} color="#e8c078" weight="semibold" />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* === AMBIENT SOUND === */}
