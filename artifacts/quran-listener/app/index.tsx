@@ -467,28 +467,11 @@ export default function PlayerScreen() {
   const playbackSpeedRef = useRef<PlaybackSpeed>(settings.playbackSpeed);
   playbackSpeedRef.current = settings.playbackSpeed;
 
-  // Apply playback rate to a player cross-platform.
-  // expo-audio's web implementation (AudioPlayerWeb) exposes `playbackRate`
-  // (mirroring HTMLAudioElement.playbackRate) and `setPlaybackRate()`.
-  // It does NOT have a `rate` property — setting `p.rate` is a silent no-op
-  // on web, which is why speed changes appeared to do nothing.
-  // On native, AudioPlayer exposes `rate` and `shouldCorrectPitch`.
-  // We try both paths so this works correctly on every platform.
+  // Apply playback rate to a player. Both native and web AudioPlayer expose
+  // setPlaybackRate(rate, pitchCorrectionQuality) — use it directly.
   const applyRateToPlayer = (p: AudioPlayer, speed: PlaybackSpeed) => {
     try {
-      // Web path: AudioPlayerWeb.playbackRate → media.playbackRate
-      if (typeof (p as unknown as { playbackRate?: unknown }).playbackRate === "number" ||
-          typeof (p as unknown as { setPlaybackRate?: unknown }).setPlaybackRate === "function") {
-        (p as unknown as { playbackRate: number }).playbackRate = speed;
-        // Also set preservesPitch via the web API if available
-        const media = (p as unknown as { media?: HTMLAudioElement }).media;
-        if (media) {
-          try { media.preservesPitch = true; } catch {}
-        }
-      }
-      // Native path: AudioPlayer.rate + shouldCorrectPitch
-      (p as unknown as { rate: number }).rate = speed;
-      (p as unknown as { shouldCorrectPitch: boolean }).shouldCorrectPitch = true;
+      p.setPlaybackRate(speed, "high");
     } catch {}
   };
 
