@@ -1879,7 +1879,7 @@ export default function PlayerScreen() {
           setBackground("custom");
           setCustomBgEditorOpen(false);
         }}
-        previewArabicText={ayahs[index]?.arabic}
+        previewArabicText={getSurah(1).ayahs[0].arabic + ayahMarker(1)}
         previewFontFamily={arabicFontFamily}
       />
 
