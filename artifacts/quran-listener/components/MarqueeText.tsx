@@ -1,4 +1,3 @@
-import { LinearGradient } from "expo-linear-gradient";
 import {
   useEffect,
   useLayoutEffect,
@@ -124,7 +123,7 @@ export function MarqueeText({ children, style }: Props) {
 
   const scrollingText = (
     <Animated.View style={[styles.scrollRow, { transform: [{ translateX }] }]}>
-      <Text style={[style, styles.text]}>
+      <Text style={[style, styles.text]} numberOfLines={1} ellipsizeMode="clip">
         {children}
       </Text>
     </Animated.View>
@@ -153,29 +152,14 @@ export function MarqueeText({ children, style }: Props) {
     );
   }
 
-  // ── Native: overflow:hidden clip + subtle gradient overlays ───────────────
-  // MaskedView requires a native build so we use a clean clip instead.
-  // The gradient overlays fade toward a near-transparent dark tint rather
-  // than solid black, so they stay subtle across all backgrounds.
+  // ── Native: clean overflow:hidden clip ────────────────────────────────────
+  // MaskedView requires a native build (incompatible with Expo Go) so we
+  // just hard-clip. Looks cleaner than a gradient that fades to the wrong colour.
   return (
     <View style={styles.root} onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}>
       {measurer}
       <View style={styles.clip}>
         {scrollingText}
-        <LinearGradient
-          pointerEvents="none"
-          colors={["rgba(0,0,0,0.55)", "rgba(0,0,0,0)"]}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={[styles.fadeEdge, styles.fadeLeft]}
-        />
-        <LinearGradient
-          pointerEvents="none"
-          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={[styles.fadeEdge, styles.fadeRight]}
-        />
       </View>
     </View>
   );
@@ -205,12 +189,4 @@ const styles = StyleSheet.create({
   text: {
     flexShrink: 0,
   },
-  fadeEdge: {
-    position: "absolute",
-    top:      0,
-    bottom:   0,
-    width:    FADE_WIDTH,
-  },
-  fadeLeft:  { left:  0 },
-  fadeRight: { right: 0 },
 });
