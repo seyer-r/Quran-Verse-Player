@@ -17,10 +17,7 @@ import {
   RECITERS,
   type ReciterId,
 } from "@/data/reciters";
-import {
-  DEFAULT_QF_TRANSLATION_ID,
-  QF_TRANSLATIONS,
-} from "@/lib/quranFoundationApi";
+import { DEFAULT_QF_TRANSLATION_ID } from "@/lib/quranFoundationApi";
 import {
   DEFAULT_TRANSITION,
   type TransitionMode,
@@ -242,7 +239,7 @@ const isValidArabicFont = (v: unknown): v is ArabicFontId =>
 const isValidReciter = (v: unknown): v is ReciterId =>
   typeof v === "string" && RECITERS.some((r) => r.id === v);
 const isValidTranslationId = (v: unknown): v is number =>
-  typeof v === "number" && QF_TRANSLATIONS.some((t) => t.id === v);
+  typeof v === "number" && Number.isInteger(v) && (v as number) > 0;
 const coerceShowTranslation = (v: unknown): boolean =>
   typeof v === "boolean" ? v : DEFAULT_SHOW_TRANSLATION;
 const isValidFontScale = (v: unknown): v is ArabicFontScale =>

@@ -1,26 +1,69 @@
 const QF_API = "https://api.quran.com";
 
-// ─── Translation options ──────────────────────────────────────────────────────
+// ─── Translation resource types ───────────────────────────────────────────────
 
 export interface QFTranslationOption {
   id: number;
   name: string;
-  language: string;
+  authorName: string;
+  language: string; // Display-capitalised, e.g. "English"
+  languageKey: string; // Raw API value, e.g. "english"
 }
-
-/** Curated list of translations available from the Quran Foundation API. */
-export const QF_TRANSLATIONS: QFTranslationOption[] = [
-  { id: 131, name: "Sahih International", language: "English" },
-  { id: 20,  name: "Pickthall", language: "English" },
-  { id: 85,  name: "The Clear Quran (Khattab)", language: "English" },
-  { id: 203, name: "Dr. Wahiduddin Khan", language: "English" },
-  { id: 149, name: "Transliteration", language: "Transliteration" },
-];
 
 export const DEFAULT_QF_TRANSLATION_ID = 131;
 
-export function getQFTranslation(id: number): QFTranslationOption {
-  return QF_TRANSLATIONS.find((t) => t.id === id) ?? QF_TRANSLATIONS[0];
+/**
+ * Fallback list used before the full translation list has been fetched.
+ * Covers the most common English choices so the picker is never empty.
+ */
+export const QF_TRANSLATIONS_FALLBACK: QFTranslationOption[] = [
+  { id: 131, name: "Sahih International",         authorName: "Sahih International",       language: "English",         languageKey: "english" },
+  { id: 20,  name: "Pickthall",                   authorName: "Mohammed Marmaduke Pickthall", language: "English",      languageKey: "english" },
+  { id: 85,  name: "The Clear Quran",             authorName: "Dr. Mustafa Khattab",       language: "English",         languageKey: "english" },
+  { id: 203, name: "Dr. Wahiduddin Khan",         authorName: "Dr. Wahiduddin Khan",       language: "English",         languageKey: "english" },
+  { id: 149, name: "Transliteration",             authorName: "Transliteration",           language: "Transliteration", languageKey: "transliteration" },
+];
+
+export function getQFTranslationName(
+  id: number,
+  allTranslations: QFTranslationOption[],
+): string {
+  const found =
+    allTranslations.find((t) => t.id === id) ??
+    QF_TRANSLATIONS_FALLBACK.find((t) => t.id === id);
+  return found?.name ?? "Translation";
+}
+
+// ─── Resources API ────────────────────────────────────────────────────────────
+
+interface RawTranslation {
+  id: number;
+  name: string;
+  author_name: string;
+  language_name: string;
+}
+
+function capitalise(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+/**
+ * Fetch the full list of available translations from the QF Resources API.
+ * Returns them sorted: English first, then all other languages alphabetically.
+ */
+export async function fetchAllTranslations(
+  signal?: AbortSignal,
+): Promise<QFTranslationOption[]> {
+  const res = await fetch(`${QF_API}/api/v4/resources/translations`, { signal });
+  if (!res.ok) throw new Error(`QF resources: ${res.status} ${res.statusText}`);
+  const data = (await res.json()) as { translations?: RawTranslation[] };
+  return (data.translations ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    authorName: t.author_name,
+    language: capitalise(t.language_name),
+    languageKey: t.language_name.toLowerCase(),
+  }));
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

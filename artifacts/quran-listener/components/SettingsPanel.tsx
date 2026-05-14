@@ -6,7 +6,8 @@ import {
   PLAYBACK_SPEEDS,
   type PlaybackSpeed,
 } from "@/lib/useSettings";
-import { QF_TRANSLATIONS } from "@/lib/quranFoundationApi";
+import { getQFTranslationName } from "@/lib/quranFoundationApi";
+import { useQFAllTranslations } from "@/lib/useQFAllTranslations";
 import { Image } from "expo-image";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -64,8 +65,8 @@ interface SettingsPanelProps {
   onOpenCustomBgEditor: () => void;
   translationId: number;
   showTranslation: boolean;
-  onTranslationIdChange: (id: number) => void;
   onShowTranslationChange: (show: boolean) => void;
+  onOpenTranslationPicker: () => void;
   /** Called once the close animation finishes AND the modal is unmounted. */
   onFullyClosed?: () => void;
 }
@@ -107,12 +108,13 @@ export function SettingsPanel({
   onOpenCustomBgEditor,
   translationId,
   showTranslation,
-  onTranslationIdChange,
   onShowTranslationChange,
+  onOpenTranslationPicker,
   onFullyClosed,
 }: SettingsPanelProps) {
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { translations: allTranslations } = useQFAllTranslations();
   const sheetHeight = screenHeight * SHEET_MAX_HEIGHT_FRACTION;
 
   // Keep the modal mounted while the close animation runs.
@@ -447,31 +449,34 @@ export function SettingsPanel({
                 </View>
               </View>
 
-              {/* Translation picker — only shown when translation is visible */}
-              {showTranslation && QF_TRANSLATIONS.map((t, i) => {
-                const selected = t.id === translationId;
-                const isLast = i === QF_TRANSLATIONS.length - 1;
-                return (
-                  <TouchableOpacity
-                    key={t.id}
-                    onPress={() => onTranslationIdChange(t.id)}
-                    activeOpacity={0.6}
-                    style={[styles.row, !isLast && styles.rowDivider]}
-                  >
-                    <View style={styles.rowTextWrap}>
-                      <Text style={[styles.rowLabel, selected && styles.rowLabelSelected]}>
-                        {t.name}
-                      </Text>
-                      <Text style={styles.rowSubLabel}>{t.language}</Text>
-                    </View>
-                    <View style={styles.rowAccessory}>
-                      {selected && (
-                        <SymbolIcon name="checkmark" fallbackIonicon="checkmark" size={17} color="#e8c078" weight="semibold" />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {/* Choose translation row — only shown when translation is enabled */}
+              {showTranslation && (
+                <TouchableOpacity
+                  activeOpacity={0.6}
+                  onPress={onOpenTranslationPicker}
+                  style={styles.row}
+                >
+                  <View style={styles.rowIcon}>
+                    <SymbolIcon
+                      name="globe"
+                      fallbackIonicon="globe-outline"
+                      size={18}
+                      color="#f5f5f5"
+                    />
+                  </View>
+                  <View style={styles.rowTextWrap}>
+                    <Text style={[styles.rowLabel, styles.rowLabelSelected]}>
+                      Choose translation
+                    </Text>
+                    <Text style={styles.rowSubLabel} numberOfLines={1}>
+                      {getQFTranslationName(translationId, allTranslations)}
+                    </Text>
+                  </View>
+                  <View style={styles.rowAccessory}>
+                    <SymbolIcon name="chevron.right" fallbackIonicon="chevron-forward" size={14} color="#525252" weight="semibold" />
+                  </View>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* === AMBIENT SOUND === */}
