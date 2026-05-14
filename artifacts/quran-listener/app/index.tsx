@@ -69,7 +69,6 @@ import { useBookmarks } from "@/lib/useBookmarks";
 // For surahs longer than this, the per-ayah segmented progress row would
 // shrink to invisible hairlines. Switch to a single overall progress bar
 // + Ayah counter. (Al-Baqarah has 286 ayahs.)
-const SEGMENTED_PROGRESS_MAX = 30;
 
 function formatRemaining(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -664,33 +663,7 @@ export default function PlayerScreen() {
   const stageOpacity = useRef(new Animated.Value(1)).current;
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Animated progress fill — smoothly interpolates from 0→100 as each ayah
-  // plays, and snaps to the new baseline when the index advances.
-  // This couples the progress bar visually to the verse crossfade transition.
-  const animatedProgress = useRef(new Animated.Value(0)).current;
-  const animatedOverallProgress = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(animatedProgress, {
-      toValue: progress,
-      duration: 160,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: false,
-    }).start();
-  }, [progress, animatedProgress]);
-  // Declared here (before the useEffect that depends on it) to avoid a
-  // temporal dead zone error — const is not hoisted.
-  const overallProgress =
-    ((index + Math.min(progress, 100) / 100) / Math.max(1, ayahs.length)) * 100;
-  useEffect(() => {
-    Animated.timing(animatedOverallProgress, {
-      toValue: overallProgress,
-      duration: 160,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: false,
-    }).start();
-  // overallProgress is derived from index + progress; this effect re-runs on both.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overallProgress, animatedOverallProgress]);
+
 
   // Cross-fade between background images.
   const bgFade = useRef(new Animated.Value(1)).current;
@@ -1673,66 +1646,29 @@ export default function PlayerScreen() {
           ]}
           pointerEvents={chromeVisible ? "auto" : "none"}
         >
-          {/* Progress bar + sleep chip overlay — chip floats over the right
-              end of the track so it never shifts the controls below it. */}
-          <View style={styles.progressAreaWrap}>
-            {ayahs.length <= SEGMENTED_PROGRESS_MAX ? (
-              <View style={styles.progressRow}>
-                {ayahs.map((a, i) => {
-                  const staticFill = i < index ? 100 : i > index ? 0 : null;
-                  return (
-                    <View key={a.number} style={styles.progressTrack}>
-                      {staticFill !== null ? (
-                        <View style={[styles.progressFill, { width: `${staticFill}%` }]} />
-                      ) : (
-                        <Animated.View
-                          style={[
-                            styles.progressFill,
-                            { width: animatedProgress.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"] }) },
-                          ]}
-                        />
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-            ) : (
-              <View style={styles.progressRow}>
-                <View style={styles.progressTrack}>
-                  <Animated.View
-                    style={[
-                      styles.progressFill,
-                      { width: animatedOverallProgress.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"] }) },
-                    ]}
-                  />
-                </View>
-              </View>
-            )}
-
-            {/* Sleep chip — absolute right of the progress row, zero layout shift */}
-            {sleepExpiresAt !== null && sleepDurationMin !== null && (
-              <TouchableOpacity
-                style={styles.sleepChip}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setSleepTimerMinutes(null);
-                }}
-                activeOpacity={0.7}
-                accessibilityLabel="Cancel sleep timer"
-                hitSlop={12}
-              >
-                <SymbolIcon
-                  name="moon.fill"
-                  fallbackIonicon="moon"
-                  size={10}
-                  color="#e8c078"
-                />
-                <Text style={styles.sleepChipText}>
-                  {formatRemaining(sleepRemainingMs)}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          {/* Sleep chip — shown when a sleep timer is active */}
+          {sleepExpiresAt !== null && sleepDurationMin !== null && (
+            <TouchableOpacity
+              style={styles.sleepChip}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setSleepTimerMinutes(null);
+              }}
+              activeOpacity={0.7}
+              accessibilityLabel="Cancel sleep timer"
+              hitSlop={12}
+            >
+              <SymbolIcon
+                name="moon.fill"
+                fallbackIonicon="moon"
+                size={10}
+                color="#e8c078"
+              />
+              <Text style={styles.sleepChipText}>
+                {formatRemaining(sleepRemainingMs)}
+              </Text>
+            </TouchableOpacity>
+          )}
 
           <View style={styles.controlsRow}>
             <TouchableOpacity
@@ -2284,19 +2220,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 8,
   },
-  progressRow: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  progressAreaWrap: {
-    position: "relative",
-    marginBottom: 18,
-  },
   sleepChip: {
-    position: "absolute",
-    right: 0,
-    top: "50%",
-    transform: [{ translateY: -11 }],
+    alignSelf: "flex-end",
+    marginBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
@@ -2313,18 +2239,6 @@ const styles = StyleSheet.create({
     color: "#e8c078",
     fontWeight: "500",
     fontVariant: ["tabular-nums"],
-  },
-  progressTrack: {
-    flex: 1,
-    height: 3,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#f5f5f5",
-    borderRadius: 999,
   },
   controlsRow: {
     flexDirection: "row",
