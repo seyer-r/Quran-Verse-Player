@@ -113,7 +113,7 @@ export default function PlayerScreen() {
 
   // Quran Foundation API — audio URLs (fetched per chapter + reciter).
   const qfRecitationId = getReciter(settings.reciterId).qfRecitationId;
-  const { audioUrlsRef: qfAudioUrlsRef } = useQFAudio(settings.surah, qfRecitationId);
+  const { audioUrlsRef: qfAudioUrlsRef, fetchCount: qfAudioFetchCount } = useQFAudio(settings.surah, qfRecitationId);
 
   // Dev-only structural validation of the bundled Quran corpus. Surfaces
   // any drift loudly in the console instead of corrupting the UI silently.
@@ -515,6 +515,21 @@ export default function PlayerScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [bundle, ayahs, settings.reciterId, surah.number],
   );
+
+  // When QF audio URLs arrive (fetchCount increments), discard all pre-created
+  // players that haven't started yet (i.e. are not the currently-playing ayah).
+  // They were created with CDN URLs before the fetch completed; nulling them
+  // forces getPlayer() to recreate them with QF URLs on next access.
+  useEffect(() => {
+    if (qfAudioFetchCount === 0) return;
+    const curIdx = indexRef.current;
+    bundle.players.forEach((p, i) => {
+      if (i === curIdx || !p) return;
+      try { p.remove(); } catch {}
+      bundle.players[i] = null;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qfAudioFetchCount]);
 
   const safePlay = (p: AudioPlayer | null | undefined) => {
     if (!p) return;

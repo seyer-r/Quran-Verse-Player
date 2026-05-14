@@ -6,27 +6,32 @@ const cache = new Map<string, Map<string, string>>();
 
 /**
  * Fetches per-verse audio file URLs for a chapter from the Quran Foundation
- * Audio API and exposes them as a stable ref that `getPlayer` can read at
- * call time without taking the map as a React dependency.
- *
- * The ref is updated in-place so it never causes the audio listener effect
- * to restart — the map is only consulted at player-creation time.
+ * Audio API.
  *
  * Returns:
- *  - `audioUrlsRef`: ref holding a Map<verseKey, url> (e.g. "1:1" → "https://..."),
- *    or null while the first fetch is in progress.
+ *  - `audioUrlsRef`: ref holding Map<verseKey, url> (e.g. "1:1" → "https://...").
+ *    Read by getPlayer at call-time without taking it as a React dependency.
+ *  - `fetchCount`: increments each time a successful fetch completes.
+ *    index.tsx watches this to reset any already-created players so they
+ *    get recreated with QF URLs on next access.
  *  - `loading`: true while the network request is in flight.
- *  - `error`: the last error message, or null on success.
+ *  - `error`: last error message, or null.
  */
 export function useQFAudio(
   surahNumber: number,
   qfRecitationId: number | null,
-): { audioUrlsRef: React.MutableRefObject<Map<string, string> | null>; loading: boolean; error: string | null } {
+): {
+  audioUrlsRef: React.MutableRefObject<Map<string, string> | null>;
+  fetchCount: number;
+  loading: boolean;
+  error: string | null;
+} {
   const cacheKey = qfRecitationId != null ? `${surahNumber}:${qfRecitationId}` : null;
 
   const audioUrlsRef = useRef<Map<string, string> | null>(
     cacheKey ? (cache.get(cacheKey) ?? null) : null,
   );
+  const [fetchCount, setFetchCount] = useState(cache.has(cacheKey ?? "") ? 1 : 0);
   const [loading, setLoading] = useState(cacheKey ? !cache.has(cacheKey) : false);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,17 +64,24 @@ export function useQFAudio(
         cache.set(cacheKey, map);
         audioUrlsRef.current = map;
         setLoading(false);
+        setFetchCount((n) => n + 1);
+        if (__DEV__) {
+          const sample = [...map.entries()][0];
+          console.log(`[QF audio] surah ${surahNumber} recitation ${qfRecitationId}: ${map.size} URLs. Sample: ${sample?.[0]} → ${sample?.[1]}`);
+        }
       })
       .catch((err) => {
         if (cacheKeyRef.current !== cacheKey) return;
         if ((err as Error).name === "AbortError") return;
-        setError((err as Error).message ?? "Failed to load audio URLs");
+        const msg = (err as Error).message ?? "Failed to load QF audio URLs";
+        setError(msg);
         setLoading(false);
+        if (__DEV__) console.warn(`[QF audio] fetch failed (surah ${surahNumber}, recitation ${qfRecitationId}):`, msg);
       });
 
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheKey]);
 
-  return { audioUrlsRef, loading, error };
+  return { audioUrlsRef, fetchCount, loading, error };
 }
