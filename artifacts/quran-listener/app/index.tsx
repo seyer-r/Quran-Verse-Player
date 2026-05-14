@@ -98,7 +98,7 @@ export default function PlayerScreen() {
     setPosition,
     setAyah: persistAyah,
   } = useSettings();
-  const arabicFontFamily = getArabicFont("uthmani").family;
+  const arabicFontFamily = getArabicFont(settings.arabicFont).family;
   const { recentSurahs, recordSurah } = useRecentSurahs();
   const { bookmarks, isBookmarked, toggleBookmark } = useBookmarks();
 
@@ -1878,6 +1878,8 @@ export default function PlayerScreen() {
           setBackground("custom");
           setCustomBgEditorOpen(false);
         }}
+        previewArabicText={ayahs[index]?.arabic}
+        previewFontFamily={arabicFontFamily}
       />
 
       <SurahPicker

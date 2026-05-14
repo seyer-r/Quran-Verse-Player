@@ -1,29 +1,10 @@
 /**
- * CustomBackgroundEditor
+ * CustomBackgroundEditor — Apple-style full-screen wallpaper editor.
  *
- * Full-screen modal where the user picks a photo and repositions it
- * inside a plain preview rectangle.
- *
- * Layout:
- *   [Cancel]   Adjust Background   [Set]
- *
- *   ┌───────────────────────────────────┐
- *   │                                   │
- *   │        (image / placeholder)      │
- *   │                                   │
- *   └───────────────────────────────────┘
- *   Drag to reposition · Pinch or scroll to zoom
- *
- *   ┌──────────────────────────────────┐
- *   │  📷  Choose Photo        ›       │
- *   └──────────────────────────────────┘
- *
- * Gesture note:
- *   The modal uses presentationStyle="fullScreen" on iOS (no pull-to-dismiss
- *   handle). This is intentional — Apple's own image-editing UIs (Photos,
- *   Procreate, Keynote canvas) do the same: editing screens are fullScreen so
- *   the dismiss gesture never conflicts with canvas pan gestures. The user
- *   taps Cancel to exit. On Android the modal is always fullScreen.
+ * The photo fills the entire screen as a live preview (same gradient and
+ * verse overlay as the real player). Cancel / Set float over the image at
+ * the top; a photo-picker pill floats at the bottom. Pan and pinch directly
+ * on the full screen — no canvas box.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -45,14 +26,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SymbolIcon } from "@/components/SymbolIcon";
 import type { CustomBg } from "@/lib/useSettings";
 
-const CANVAS_RADIUS = 14;
-const CANVAS_ASPECT = 19.5 / 9; // portrait — matches the actual app screen ratio
-
 interface Props {
   open: boolean;
   onClose: () => void;
   current: CustomBg | null;
   onApply: (bg: CustomBg) => void;
+  /** Arabic text of the current ayah — rendered as a ghost preview. */
+  previewArabicText?: string;
+  /** Font family for the preview text. */
+  previewFontFamily?: string;
 }
 
 export function CustomBackgroundEditor({
@@ -60,6 +42,8 @@ export function CustomBackgroundEditor({
   onClose,
   current,
   onApply,
+  previewArabicText,
+  previewFontFamily,
 }: Props) {
   const { width: sw, height: sh } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -68,7 +52,7 @@ export function CustomBackgroundEditor({
   const [draftUri, setDraftUri] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
 
-  // ── ALL refs declared before any effect ───────────────────────────────────
+  // ── Refs ──────────────────────────────────────────────────────────────────
   const draftUriRef = useRef<string | null>(null);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const translateXAnim = useRef(new Animated.Value(0)).current;
@@ -77,23 +61,15 @@ export function CustomBackgroundEditor({
   const currentTxRef = useRef(0);
   const currentTyRef = useRef(0);
   const gestureRef = useRef({
-    // ── Single-touch baseline ─────────────────────────────────────────────
-    // Absolute page coords of the initial touch; baseTx/Ty = transform when
-    // this single-touch phase started.  Using absolute coords (not s.dx/s.dy)
-    // lets us re-anchor cleanly when finger count changes mid-gesture.
     pivotX:      0,
     pivotY:      0,
     baseTx:      0,
     baseTy:      0,
     baseScale:   1,
-    // ── Multi-touch baseline ──────────────────────────────────────────────
-    // Snapshot taken the moment a second finger touches down (or when the
-    // gesture starts with two fingers).  Reset each time we enter 2-finger mode.
     isMultiTouch: false,
-    mtMidX:      0,   // initial midpoint X of the two fingers
-    mtMidY:      0,   // initial midpoint Y of the two fingers
-    mtDist:      1,   // initial distance between the two fingers
-    // ── Latest committed values (read on release for clamping) ────────────
+    mtMidX:      0,
+    mtMidY:      0,
+    mtDist:      1,
     lastScale:   1,
     lastTx:      0,
     lastTy:      0,
@@ -101,24 +77,13 @@ export function CustomBackgroundEditor({
   const clampRef = useRef<
     (s: number, x: number, y: number) => { scale: number; tx: number; ty: number }
   >((s, x, y) => ({ scale: s, tx: x, ty: y }));
-  const canvasDimsRef = useRef({ w: 0, h: 0 });
-  // Tracks whether transform differs from identity — drives the Reset button.
-  const isDirtyRef       = useRef(false);
-  const resetBtnOpacity  = useRef(new Animated.Value(0)).current;
+  const canvasDimsRef = useRef({ w: sw, h: sh });
+  const isDirtyRef      = useRef(false);
+  const resetBtnOpacity = useRef(new Animated.Value(0)).current;
 
-  // ── Canvas dimensions ──────────────────────────────────────────────────────
-  // NAV_H + instruction + picker card + safe areas = ~232px fixed chrome.
-  // The remainder is available for the canvas.
-  const NAV_H = 56;
-  const BOTTOM_CHROME = 40 + 120 + insets.bottom + 20; // hint + card + padding
-  const availH = sh - (Platform.OS === "ios" ? 0 : insets.top) - NAV_H - BOTTOM_CHROME - 16;
-  const availW = sw - 40; // 20px side padding each side
-  let mH = Math.min(Math.max(availH, 240), 520);
-  let mW = mH / CANVAS_ASPECT;
-  if (mW > availW) {
-    mW = availW;
-    mH = mW * CANVAS_ASPECT;
-  }
+  // Canvas = full screen
+  const mW = sw;
+  const mH = sh;
 
   // ── Sync live refs each render ────────────────────────────────────────────
   draftUriRef.current = draftUri;
@@ -139,37 +104,29 @@ export function CustomBackgroundEditor({
     PanResponder.create({
       onStartShouldSetPanResponder: () => draftUriRef.current !== null,
       onMoveShouldSetPanResponder: () => draftUriRef.current !== null,
-      // Immediately capture two-finger touches so pinch works in all directions
-      // (diagonal, horizontal, vertical) — matching UIPinchGestureRecognizer.
-      // Single-finger capture is deferred to onMove so child taps still fire.
       onStartShouldSetPanResponderCapture: (evt) =>
         draftUriRef.current !== null && evt.nativeEvent.touches.length >= 2,
       onMoveShouldSetPanResponderCapture: () => draftUriRef.current !== null,
       onPanResponderGrant: (evt) => {
         const g = gestureRef.current;
         const t = evt.nativeEvent.touches;
-
-        // Snapshot the current transform as the baseline for this gesture.
-        g.baseScale  = currentScaleRef.current;
-        g.baseTx     = currentTxRef.current;
-        g.baseTy     = currentTyRef.current;
-        g.lastScale  = currentScaleRef.current;
-        g.lastTx     = currentTxRef.current;
-        g.lastTy     = currentTyRef.current;
+        g.baseScale   = currentScaleRef.current;
+        g.baseTx      = currentTxRef.current;
+        g.baseTy      = currentTyRef.current;
+        g.lastScale   = currentScaleRef.current;
+        g.lastTx      = currentTxRef.current;
+        g.lastTy      = currentTyRef.current;
         g.isMultiTouch = false;
-
         if (t && t.length >= 2) {
-          // Started with two fingers — initialise multi-touch baseline.
           g.isMultiTouch = true;
           const midX = (t[0].pageX + t[1].pageX) / 2;
           const midY = (t[0].pageY + t[1].pageY) / 2;
-          const dx   = t[1].pageX - t[0].pageX;
-          const dy   = t[1].pageY - t[0].pageY;
+          const dx = t[1].pageX - t[0].pageX;
+          const dy = t[1].pageY - t[0].pageY;
           g.mtMidX = midX;
           g.mtMidY = midY;
           g.mtDist = Math.sqrt(dx * dx + dy * dy) || 1;
         } else if (t && t.length >= 1) {
-          // Single finger — record the absolute touch anchor.
           g.pivotX = t[0].pageX;
           g.pivotY = t[0].pageY;
         }
@@ -178,55 +135,40 @@ export function CustomBackgroundEditor({
         const g = gestureRef.current;
         const t = evt.nativeEvent.touches;
         if (!t || t.length === 0) return;
-
         if (t.length >= 2) {
-          // ── Two-finger: simultaneous pan + pinch ────────────────────────
           const midX = (t[0].pageX + t[1].pageX) / 2;
           const midY = (t[0].pageY + t[1].pageY) / 2;
-          const dx   = t[1].pageX - t[0].pageX;
-          const dy   = t[1].pageY - t[0].pageY;
+          const dx = t[1].pageX - t[0].pageX;
+          const dy = t[1].pageY - t[0].pageY;
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
           if (!g.isMultiTouch) {
-            // A second finger arrived mid-gesture: lock current state as the
-            // new baseline so there is no position/scale jump.
             g.isMultiTouch = true;
-            g.baseTx       = g.lastTx;
-            g.baseTy       = g.lastTy;
-            g.baseScale    = g.lastScale;
-            g.mtMidX       = midX;
-            g.mtMidY       = midY;
-            g.mtDist       = dist;
+            g.baseTx   = g.lastTx;
+            g.baseTy   = g.lastTy;
+            g.baseScale = g.lastScale;
+            g.mtMidX   = midX;
+            g.mtMidY   = midY;
+            g.mtDist   = dist;
           }
-
-          // Scale from the baseline; always ≥ 1 so the image never shrinks
-          // below its "fill" size and exposes the black canvas background.
           const newScale = Math.max(1.0, g.baseScale * (dist / g.mtDist));
-          // Pan: follow the midpoint of the two fingers.
-          const newTx   = g.baseTx + (midX - g.mtMidX);
-          const newTy   = g.baseTy + (midY - g.mtMidY);
-
+          const newTx = g.baseTx + (midX - g.mtMidX);
+          const newTy = g.baseTy + (midY - g.mtMidY);
           scaleAnim.setValue(newScale);
           translateXAnim.setValue(newTx);
           translateYAnim.setValue(newTy);
           g.lastScale = newScale;
-          g.lastTx    = newTx;
-          g.lastTy    = newTy;
-
+          g.lastTx = newTx;
+          g.lastTy = newTy;
         } else {
-          // ── Single finger: pan only ──────────────────────────────────────
           if (g.isMultiTouch) {
-            // Second finger just lifted: re-anchor single-touch to avoid a jump.
             g.isMultiTouch = false;
-            g.baseTx       = g.lastTx;
-            g.baseTy       = g.lastTy;
-            g.pivotX       = t[0].pageX;
-            g.pivotY       = t[0].pageY;
+            g.baseTx  = g.lastTx;
+            g.baseTy  = g.lastTy;
+            g.pivotX  = t[0].pageX;
+            g.pivotY  = t[0].pageY;
           }
-
           const newTx = g.baseTx + (t[0].pageX - g.pivotX);
           const newTy = g.baseTy + (t[0].pageY - g.pivotY);
-
           translateXAnim.setValue(newTx);
           translateYAnim.setValue(newTy);
           g.lastTx = newTx;
@@ -234,9 +176,9 @@ export function CustomBackgroundEditor({
         }
       },
       onPanResponderRelease: () => {
-        const g       = gestureRef.current;
+        const g = gestureRef.current;
         const clamped = clampRef.current(g.lastScale, g.lastTx, g.lastTy);
-        const needs   =
+        const needs =
           clamped.scale !== g.lastScale ||
           clamped.tx    !== g.lastTx    ||
           clamped.ty    !== g.lastTy;
@@ -253,7 +195,6 @@ export function CustomBackgroundEditor({
         g.lastScale = clamped.scale;
         g.lastTx    = clamped.tx;
         g.lastTy    = clamped.ty;
-        // Show/hide the Reset button based on whether transform is non-identity.
         const dirty = Math.abs(clamped.scale - 1) > 0.01
                    || Math.abs(clamped.tx) > 0.5
                    || Math.abs(clamped.ty) > 0.5;
@@ -303,17 +244,17 @@ export function CustomBackgroundEditor({
     }
   }, [open, current, scaleAnim, translateXAnim, translateYAnim]);
 
-  // ── Effect: mouse-wheel zoom (web only) ───────────────────────────────────
+  // ── Mouse-wheel zoom (web) ────────────────────────────────────────────────
   useEffect(() => {
     if (Platform.OS !== "web" || !open) return;
     const handleWheel = (e: Event) => {
-      const we    = e as WheelEvent;
+      const we = e as WheelEvent;
       we.preventDefault();
-      const delta    = we.deltaY < 0 ? 0.09 : -0.09;
-      const newScale = Math.max(0.3, currentScaleRef.current + delta);
+      const delta = we.deltaY < 0 ? 0.09 : -0.09;
+      const newScale = Math.max(1.0, currentScaleRef.current + delta);
       scaleAnim.setValue(newScale);
       gestureRef.current.lastScale = newScale;
-      currentScaleRef.current      = newScale;
+      currentScaleRef.current = newScale;
     };
     const el = document.getElementById("cbg-canvas");
     if (el) {
@@ -337,7 +278,6 @@ export function CustomBackgroundEditor({
     resetBtnOpacity.setValue(0);
   }, [scaleAnim, translateXAnim, translateYAnim, resetBtnOpacity]);
 
-  // Spring-animated reset — used by the Reset pill button.
   const resetTransformAnimated = useCallback(() => {
     Animated.parallel([
       Animated.spring(scaleAnim,      { toValue: 1, useNativeDriver: true, tension: 180, friction: 18 }),
@@ -394,8 +334,8 @@ export function CustomBackgroundEditor({
 
   const handleApply = useCallback(() => {
     if (!draftUri) return;
-    const clamped   = clampRef.current(currentScaleRef.current, currentTxRef.current, currentTyRef.current);
-    const { w, h }  = canvasDimsRef.current;
+    const clamped  = clampRef.current(currentScaleRef.current, currentTxRef.current, currentTyRef.current);
+    const { w, h } = canvasDimsRef.current;
     onApply({
       uri:          draftUri,
       scale:        clamped.scale,
@@ -405,332 +345,319 @@ export function CustomBackgroundEditor({
   }, [draftUri, onApply]);
 
   const hasMedia = draftUri !== null;
+  const topPad   = insets.top + 8;
+  const botPad   = insets.bottom + 28;
 
   return (
     <Modal
       visible={open}
-      // fullScreen on iOS removes the pull-to-dismiss handle that conflicts
-      // with pan gestures on the canvas. This matches Apple's Photos/Keynote
-      // editing pattern — use Cancel to exit deliberately.
       animationType="slide"
       presentationStyle="fullScreen"
       onRequestClose={onClose}
       statusBarTranslucent={Platform.OS === "android"}
     >
-      <View
-        style={[
-          styles.container,
-          { paddingTop: Platform.OS === "ios" ? insets.top : insets.top },
-        ]}
-      >
-        {/* ── Navigation bar ─────────────────────────────────────────── */}
-        <View style={styles.navBar}>
-          <TouchableOpacity
-            onPress={onClose}
-            hitSlop={12}
-            style={styles.navSideBtn}
-            activeOpacity={0.6}
-          >
-            <Text style={styles.navCancel}>Cancel</Text>
-          </TouchableOpacity>
+      <View style={styles.root}>
 
-          <Text style={styles.navTitle} numberOfLines={1}>
-            {hasMedia ? "Adjust Background" : "Custom Background"}
-          </Text>
-
-          <TouchableOpacity
-            onPress={handleApply}
-            hitSlop={12}
-            style={[styles.navSideBtn, styles.navSideBtnRight]}
-            activeOpacity={hasMedia ? 0.6 : 1}
-            disabled={!hasMedia}
-          >
-            <Text style={[styles.navSet, !hasMedia && styles.navSetDisabled]}>
-              Set
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Canvas area ───────────────────────────────────────────── */}
-        <View style={styles.canvasArea}>
-          <View
-            nativeID="cbg-canvas"
-            style={[
-              styles.canvas,
-              { width: mW, height: mH },
-              Platform.OS === "web"
-                ? ({ boxShadow: "0 20px 60px rgba(0,0,0,0.85)" } as object)
-                : {
-                    shadowColor: "#000",
-                    shadowOpacity: 0.85,
-                    shadowRadius: 32,
-                    shadowOffset: { width: 0, height: 14 },
-                    elevation: 32,
-                  },
-            ]}
-            {...panResponder.panHandlers}
-          >
-            {/* Background media with transform */}
-            {hasMedia && (
-              <Animated.View
-                style={[
-                  StyleSheet.absoluteFill,
-                  {
-                    transform: [
-                      { scale:      scaleAnim      },
-                      { translateX: translateXAnim  },
-                      { translateY: translateYAnim  },
-                    ],
-                  },
-                ]}
-                pointerEvents="none"
-              >
-                <Image
-                  source={{ uri: draftUri! }}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="cover"
-                />
-              </Animated.View>
-            )}
-
-            {/* Subtle edge vignette when media present */}
-            {hasMedia && (
-              <LinearGradient
-                colors={[
-                  "rgba(0,0,0,0.28)",
-                  "transparent",
-                  "transparent",
-                  "rgba(0,0,0,0.28)",
-                ]}
-                locations={[0, 0.25, 0.75, 1]}
+        {/* ── Full-screen gesture + image layer ─────────────────────────── */}
+        <View
+          nativeID="cbg-canvas"
+          style={StyleSheet.absoluteFill}
+          {...panResponder.panHandlers}
+        >
+          {/* Photo */}
+          {hasMedia && (
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  transform: [
+                    { scale:      scaleAnim      },
+                    { translateX: translateXAnim  },
+                    { translateY: translateYAnim  },
+                  ],
+                },
+              ]}
+              pointerEvents="none"
+            >
+              <Image
+                source={{ uri: draftUri! }}
                 style={StyleSheet.absoluteFill}
-                pointerEvents="none"
+                contentFit="cover"
               />
-            )}
+            </Animated.View>
+          )}
 
-            {/* Reset pill — fades in when transform is non-identity */}
-            {hasMedia && (
-              <Animated.View
-                style={[styles.resetWrap, { opacity: resetBtnOpacity }]}
-                pointerEvents="box-none"
+          {/* Dimming scrim — matches the app's default dim setting */}
+          {hasMedia && (
+            <LinearGradient
+              colors={[
+                "rgba(0,0,0,0.55)",
+                "rgba(0,0,0,0.35)",
+                "rgba(0,0,0,0.55)",
+                "rgba(0,0,0,0.85)",
+              ]}
+              locations={[0, 0.25, 0.75, 1]}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+          )}
+
+          {/* Ghost verse preview — shows how the text will look */}
+          {hasMedia && previewArabicText && (
+            <View style={styles.previewOverlay} pointerEvents="none">
+              <Text
+                style={[
+                  styles.previewText,
+                  previewFontFamily ? { fontFamily: previewFontFamily } : undefined,
+                ]}
+                numberOfLines={4}
               >
-                <TouchableOpacity
-                  onPress={resetTransformAnimated}
-                  activeOpacity={0.72}
-                  style={styles.resetPill}
-                >
-                  <SymbolIcon
-                    name="arrow.counterclockwise"
-                    fallbackIonicon="refresh"
-                    size={12}
-                    color="rgba(255,255,255,0.88)"
-                  />
-                  <Text style={styles.resetPillText}>Reset</Text>
-                </TouchableOpacity>
-              </Animated.View>
-            )}
-
-            {/* Placeholder when no media selected */}
-            {!hasMedia && (
-              <View style={styles.placeholder} pointerEvents="none">
-                <View style={styles.placeholderGlow}>
-                  <SymbolIcon
-                    name="photo.on.rectangle"
-                    fallbackIonicon="images-outline"
-                    size={40}
-                    color="#4a4a4e"
-                  />
-                </View>
-                <Text style={styles.placeholderText}>
-                  Your photo{"\n"}will appear here
-                </Text>
-                <Text style={styles.placeholderHint}>
-                  Choose one below to get started
-                </Text>
-              </View>
-            )}
-          </View>
+                {previewArabicText}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* ── Instruction hint ──────────────────────────────────────── */}
-        <Text style={[styles.instruction, { opacity: hasMedia ? 1 : 0 }]}>
-          Drag to reposition · Pinch or scroll to zoom
-        </Text>
-
-        {/* ── Media picker card ─────────────────────────────────────── */}
-        <View style={[styles.pickerCard, { marginBottom: insets.bottom + 20 }]}>
+        {/* ── Placeholder (no photo selected) ───────────────────────────── */}
+        {!hasMedia && (
           <TouchableOpacity
+            style={styles.placeholder}
             onPress={pickImage}
-            activeOpacity={0.65}
-            style={styles.pickerRow}
             disabled={picking}
+            activeOpacity={0.8}
           >
             <SymbolIcon
-              name="photo"
-              fallbackIonicon="image-outline"
-              size={19}
-              color={picking ? "#3a3a3c" : "#e8c078"}
+              name="photo.badge.plus"
+              fallbackIonicon="add-circle-outline"
+              size={52}
+              color="rgba(255,255,255,0.25)"
             />
-            <Text style={[styles.pickerRowLabel, picking && styles.pickerRowLabelDim]}>
-              Choose Photo
+            <Text style={styles.placeholderLabel}>Choose a Photo</Text>
+            <Text style={styles.placeholderSub}>
+              Tap anywhere to pick from your library
             </Text>
-            <SymbolIcon
-              name="chevron.right"
-              fallbackIonicon="chevron-forward"
-              size={14}
-              color="#525252"
-            />
           </TouchableOpacity>
+        )}
+
+        {/* ── Floating controls (rendered above gesture layer) ───────────── */}
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+
+          {/* Top bar: Cancel / title / Set */}
+          <View style={[styles.topBar, { top: topPad }]} pointerEvents="box-none">
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={14}
+              style={styles.topBarBtn}
+              activeOpacity={0.65}
+            >
+              <View style={styles.topBarPill}>
+                <Text style={styles.cancelLabel}>Cancel</Text>
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.topBarPill} pointerEvents="none">
+              <Text style={styles.titleLabel} numberOfLines={1}>
+                {hasMedia ? "Adjust Photo" : "Custom Background"}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={handleApply}
+              hitSlop={14}
+              style={[styles.topBarBtn, styles.topBarBtnRight]}
+              activeOpacity={hasMedia ? 0.65 : 1}
+              disabled={!hasMedia}
+            >
+              <View style={[styles.topBarPill, !hasMedia && styles.topBarPillHidden]}>
+                <Text style={styles.setLabel}>Set</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* Reset pill — fades in when transform is non-identity */}
+          {hasMedia && (
+            <Animated.View
+              style={[styles.resetWrap, { bottom: botPad + 72 }, { opacity: resetBtnOpacity }]}
+              pointerEvents="box-none"
+            >
+              <TouchableOpacity
+                onPress={resetTransformAnimated}
+                activeOpacity={0.72}
+                style={styles.resetPill}
+              >
+                <SymbolIcon
+                  name="arrow.counterclockwise"
+                  fallbackIonicon="refresh"
+                  size={12}
+                  color="rgba(255,255,255,0.88)"
+                />
+                <Text style={styles.resetPillText}>Reset</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
+          {/* Bottom: photo picker pill */}
+          {hasMedia && (
+            <View style={[styles.bottomBar, { bottom: botPad }]} pointerEvents="box-none">
+              <TouchableOpacity
+                onPress={pickImage}
+                disabled={picking}
+                activeOpacity={0.75}
+                style={styles.photoBtn}
+              >
+                <SymbolIcon
+                  name="photo"
+                  fallbackIonicon="image-outline"
+                  size={16}
+                  color={picking ? "rgba(232,192,120,0.4)" : "#e8c078"}
+                />
+                <Text style={[styles.photoBtnLabel, picking && styles.photoBtnLabelDim]}>
+                  Change Photo
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
+
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: "#0a0a0a",
+    backgroundColor: "#080808",
   },
 
-  // ── Nav bar ────────────────────────────────────────────────────────────────
-  navBar: {
-    height: 56,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.08)",
-  },
-  navSideBtn: {
-    width: 72,
-  },
-  navSideBtnRight: {
-    alignItems: "flex-end",
-  },
-  navTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontSize: 17,
-    fontWeight: "600",
-    color: "#f5f5f5",
-    letterSpacing: -0.2,
-  },
-  navCancel: {
-    fontSize: 17,
-    color: "#f5f5f5",
-    fontWeight: "400",
-  },
-  navSet: {
-    fontSize: 17,
-    color: "#e8c078",
-    fontWeight: "600",
-  },
-  navSetDisabled: {
-    opacity: 0,
-  },
-
-  // ── Canvas ─────────────────────────────────────────────────────────────────
-  canvasArea: {
-    flex: 1,
+  // ── Preview ────────────────────────────────────────────────────────────────
+  previewOverlay: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 32,
   },
-  canvas: {
-    borderRadius: CANVAS_RADIUS,
-    overflow: "hidden",
-    backgroundColor: "#111",
+  previewText: {
+    fontSize: 30,
+    lineHeight: 52,
+    color: "rgba(255,255,255,0.22)",
+    textAlign: "center",
+    writingDirection: "rtl",
   },
 
   // ── Placeholder ────────────────────────────────────────────────────────────
   placeholder: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 12,
   },
-  placeholderGlow: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: "rgba(232,192,120,0.05)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
+  placeholderLabel: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.55)",
+    letterSpacing: -0.3,
+    marginTop: 4,
   },
-  placeholderText: {
+  placeholderSub: {
     fontSize: 13,
-    color: "#4a4a4e",
-    textAlign: "center",
-    lineHeight: 19,
+    color: "rgba(255,255,255,0.25)",
+    letterSpacing: 0,
   },
-  placeholderHint: {
-    fontSize: 11,
-    color: "#2e2e30",
-    textAlign: "center",
-    marginTop: 2,
+
+  // ── Top bar ────────────────────────────────────────────────────────────────
+  topBar: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  topBarBtn: {
+    minWidth: 72,
+  },
+  topBarBtnRight: {
+    alignItems: "flex-end",
+  },
+  topBarPill: {
+    backgroundColor: "rgba(0,0,0,0.48)",
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  topBarPillHidden: {
+    opacity: 0,
+  },
+  cancelLabel: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.85)",
+  },
+  titleLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.7)",
+    letterSpacing: -0.2,
+  },
+  setLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#e8c078",
   },
 
   // ── Reset pill ─────────────────────────────────────────────────────────────
   resetWrap: {
-    position:  "absolute",
-    bottom:    16,
-    left:      0,
-    right:     0,
+    position: "absolute",
+    left: 0,
+    right: 0,
     alignItems: "center",
   },
   resetPill: {
-    flexDirection:   "row",
-    alignItems:      "center",
-    gap:             6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingVertical: 8,
     paddingHorizontal: 15,
-    borderRadius:    20,
+    borderRadius: 20,
     backgroundColor: "rgba(0,0,0,0.52)",
-    borderWidth:     StyleSheet.hairlineWidth,
-    borderColor:     "rgba(255,255,255,0.14)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.14)",
   },
   resetPillText: {
-    fontSize:      13,
-    fontWeight:    "500",
-    color:         "rgba(255,255,255,0.9)",
+    fontSize: 13,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.9)",
     letterSpacing: -0.1,
   },
 
-  // ── Instruction ────────────────────────────────────────────────────────────
-  instruction: {
-    textAlign: "center",
-    fontSize: 13,
-    color: "#555",
-    paddingVertical: 12,
-    letterSpacing: 0.1,
+  // ── Bottom bar ─────────────────────────────────────────────────────────────
+  bottomBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
   },
-
-  // ── Picker card ────────────────────────────────────────────────────────────
-  pickerCard: {
-    marginHorizontal: 20,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderRadius: 14,
-    overflow: "hidden",
-  },
-  pickerRow: {
+  photoBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 15,
-    gap: 12,
+    gap: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    backgroundColor: "rgba(0,0,0,0.52)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.14)",
   },
-  pickerRowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.08)",
+  photoBtnLabel: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.85)",
+    letterSpacing: -0.2,
   },
-  pickerRowLabel: {
-    flex: 1,
-    fontSize: 16,
-    color: "#e8e8e8",
-    fontWeight: "400",
-  },
-  pickerRowLabelDim: {
-    color: "#3a3a3c",
+  photoBtnLabelDim: {
+    color: "rgba(255,255,255,0.3)",
   },
 });
