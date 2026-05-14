@@ -693,15 +693,15 @@ export function SettingsPanel({
               </View>
             </View>
           </ScrollView>
-        </Animated.View>
 
-        {/* Translation sub-screen — slides in over the sheet content */}
-        <TranslationPicker
-          open={translationPickerOpen}
-          currentId={translationId}
-          onSelect={onTranslationIdChange}
-          onBack={() => setTranslationPickerOpen(false)}
-        />
+          {/* Translation sub-screen — slides in over the sheet content, inside the panel so absoluteFill maps to the panel bounds */}
+          <TranslationPicker
+            open={translationPickerOpen}
+            currentId={translationId}
+            onSelect={onTranslationIdChange}
+            onBack={() => setTranslationPickerOpen(false)}
+          />
+        </Animated.View>
       </View>
     </Modal>
   );
