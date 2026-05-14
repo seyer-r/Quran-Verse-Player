@@ -123,7 +123,7 @@ export function MarqueeText({ children, style }: Props) {
 
   const scrollingText = (
     <Animated.View style={[styles.scrollRow, { transform: [{ translateX }] }]}>
-      <Text style={[style, styles.text]} numberOfLines={1} ellipsizeMode="clip">
+      <Text style={[style, styles.text, { width: naturalW }]} numberOfLines={1}>
         {children}
       </Text>
     </Animated.View>
