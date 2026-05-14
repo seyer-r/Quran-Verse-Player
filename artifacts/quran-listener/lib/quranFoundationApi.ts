@@ -127,7 +127,10 @@ export async function fetchChapterAudio(
   const data = (await res.json()) as { audio_files?: RawAudioFile[] };
   const map = new Map<string, string>();
   for (const f of data.audio_files ?? []) {
-    if (f.verse_key && f.url) map.set(f.verse_key, f.url);
+    if (!f.verse_key || !f.url) continue;
+    // QF API returns relative paths (e.g. "Alafasy/mp3/001001.mp3"); prepend host.
+    const fullUrl = f.url.startsWith("http") ? f.url : `https://verses.quran.com/${f.url}`;
+    map.set(f.verse_key, fullUrl);
   }
   return map;
 }

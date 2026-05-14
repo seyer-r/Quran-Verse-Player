@@ -1,14 +1,21 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getSurah, TOTAL_SURAHS } from "@/data/quran";
+import {
+  addQFBookmark,
+  deleteQFBookmark,
+  fetchQFBookmarks,
+} from "./qfUserApi";
 
-const STORAGE_KEY = "quran-listener-bookmarks-v1";
+const STORAGE_KEY = "quran-listener-bookmarks-v2";
 const MAX_BOOKMARKS = 50;
 
 export interface Bookmark {
   surah: number;
   ayah: number;
   savedAt: number;
+  /** QF bookmark ID — present when this bookmark has been synced to the QF User API. */
+  qfId?: string;
 }
 
 function isValidBookmark(v: unknown): v is Bookmark {
@@ -31,10 +38,14 @@ function isValidBookmark(v: unknown): v is Bookmark {
   return true;
 }
 
-export function useBookmarks() {
+export function useBookmarks(token: string | null = null) {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
 
+  // Hydrate from local storage.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -44,27 +55,59 @@ export function useBookmarks() {
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
-            const valid = parsed
-              .filter(isValidBookmark)
-              .slice(0, MAX_BOOKMARKS);
-            setBookmarks(valid);
+            setBookmarks(parsed.filter(isValidBookmark).slice(0, MAX_BOOKMARKS));
           }
         }
       } catch {
-        // ignore — fall back to empty
+        // fall back to empty
       } finally {
         if (!cancelled) setHydrated(true);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
+  // Persist to local storage whenever bookmarks change.
   useEffect(() => {
     if (!hydrated) return;
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(bookmarks)).catch(() => {});
   }, [bookmarks, hydrated]);
+
+  // When a QF token becomes available, fetch remote bookmarks and merge.
+  useEffect(() => {
+    if (!token || !hydrated) return;
+    let cancelled = false;
+    setSyncing(true);
+    fetchQFBookmarks(token)
+      .then((qfBookmarks) => {
+        if (cancelled) return;
+        setBookmarks((prev) => {
+          const merged = [...prev];
+          for (const qfBm of qfBookmarks) {
+            const [surahStr, ayahStr] = qfBm.verseKey.split(":");
+            const surah = Number(surahStr);
+            const ayah = Number(ayahStr);
+            if (!surah || !ayah) continue;
+            const existing = merged.findIndex(
+              (b) => b.surah === surah && b.ayah === ayah,
+            );
+            if (existing >= 0) {
+              // Attach QF ID to existing local bookmark.
+              merged[existing] = { ...merged[existing], qfId: qfBm.id };
+            } else {
+              // Remote bookmark not in local — add it.
+              merged.unshift({ surah, ayah, savedAt: Date.now(), qfId: qfBm.id });
+            }
+          }
+          return merged.slice(0, MAX_BOOKMARKS);
+        });
+      })
+      .catch((err) => {
+        if (__DEV__) console.warn("[QF bookmarks] sync failed:", err);
+      })
+      .finally(() => { if (!cancelled) setSyncing(false); });
+    return () => { cancelled = true; };
+  }, [token, hydrated]);
 
   const isBookmarked = useCallback(
     (surah: number, ayah: number): boolean =>
@@ -72,18 +115,49 @@ export function useBookmarks() {
     [bookmarks],
   );
 
-  const toggleBookmark = useCallback((surah: number, ayah: number) => {
-    setBookmarks((prev) => {
-      const exists = prev.some((b) => b.surah === surah && b.ayah === ayah);
-      if (exists) {
-        return prev.filter((b) => !(b.surah === surah && b.ayah === ayah));
-      }
-      return [{ surah, ayah, savedAt: Date.now() }, ...prev].slice(
-        0,
-        MAX_BOOKMARKS,
+  const toggleBookmark = useCallback(
+    async (surah: number, ayah: number) => {
+      const existing = bookmarks.find(
+        (b) => b.surah === surah && b.ayah === ayah,
       );
-    });
-  }, []);
 
-  return { bookmarks, isBookmarked, toggleBookmark };
+      if (existing) {
+        // Remove locally first for instant UI feedback.
+        setBookmarks((prev) =>
+          prev.filter((b) => !(b.surah === surah && b.ayah === ayah)),
+        );
+        // Remove remotely if we have a QF ID.
+        if (tokenRef.current && existing.qfId) {
+          deleteQFBookmark(tokenRef.current, existing.qfId).catch((err) => {
+            if (__DEV__) console.warn("[QF bookmarks] delete failed:", err);
+          });
+        }
+      } else {
+        const newBm: Bookmark = { surah, ayah, savedAt: Date.now() };
+        // Add locally immediately.
+        setBookmarks((prev) =>
+          [newBm, ...prev].slice(0, MAX_BOOKMARKS),
+        );
+        // Add remotely; attach QF ID when it comes back.
+        if (tokenRef.current) {
+          addQFBookmark(tokenRef.current, `${surah}:${ayah}`)
+            .then((qfBm) => {
+              setBookmarks((prev) =>
+                prev.map((b) =>
+                  b.surah === surah && b.ayah === ayah && !b.qfId
+                    ? { ...b, qfId: qfBm.id }
+                    : b,
+                ),
+              );
+            })
+            .catch((err) => {
+              if (__DEV__) console.warn("[QF bookmarks] add failed:", err);
+            });
+        }
+      }
+    },
+    [bookmarks],
+  );
+
+  return { bookmarks, isBookmarked, toggleBookmark, syncing };
 }

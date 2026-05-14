@@ -9,9 +9,11 @@ import {
 } from "@/lib/useSettings";
 import { getQFTranslationName } from "@/lib/quranFoundationApi";
 import { useQFAllTranslations } from "@/lib/useQFAllTranslations";
+import type { QFAuthState } from "@/lib/useQFAuth";
 import { Image } from "expo-image";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   Modal,
@@ -21,6 +23,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -68,6 +71,7 @@ interface SettingsPanelProps {
   showTranslation: boolean;
   onTranslationIdChange: (id: number) => void;
   onShowTranslationChange: (show: boolean) => void;
+  qfAuth: QFAuthState;
   /** Called once the close animation finishes AND the modal is unmounted. */
   onFullyClosed?: () => void;
 }
@@ -111,12 +115,21 @@ export function SettingsPanel({
   showTranslation,
   onTranslationIdChange,
   onShowTranslationChange,
+  qfAuth,
   onFullyClosed,
 }: SettingsPanelProps) {
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { translations: allTranslations } = useQFAllTranslations();
   const [translationPickerOpen, setTranslationPickerOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+
+  // Close the login form automatically on successful sign-in.
+  useEffect(() => {
+    if (qfAuth.isSignedIn && loginOpen) setLoginOpen(false);
+  }, [qfAuth.isSignedIn, loginOpen]);
   const sheetHeight = screenHeight * SHEET_MAX_HEIGHT_FRACTION;
 
   // Keep the modal mounted while the close animation runs.
@@ -692,7 +705,110 @@ export function SettingsPanel({
                 </View>
               </View>
             </View>
+            {/* ── Account / Quran.com sign-in ── */}
+            <SectionHeader title="Quran.com Account" style={{ marginTop: 28 }} />
+            <View style={styles.group}>
+              {qfAuth.isSignedIn ? (
+                <>
+                  <View style={[styles.row, { paddingVertical: 14 }]}>
+                    <View style={styles.rowIcon}>
+                      <SymbolIcon name="person.crop.circle" fallbackIonicon="person-circle" size={20} color="#e8c078" />
+                    </View>
+                    <View style={styles.rowTextWrap}>
+                      <Text style={[styles.rowLabel, styles.rowLabelSelected]}>
+                        {qfAuth.user?.name ?? qfAuth.user?.email ?? "Signed in"}
+                      </Text>
+                      <Text style={styles.rowSubLabel}>Bookmarks sync to your Quran.com account</Text>
+                    </View>
+                  </View>
+                  <View style={styles.rowDivider} />
+                  <TouchableOpacity
+                    style={[styles.row, { paddingVertical: 14 }]}
+                    onPress={qfAuth.signOut}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.rowIcon}>
+                      <SymbolIcon name="rectangle.portrait.and.arrow.right" fallbackIonicon="log-out" size={18} color="#737373" />
+                    </View>
+                    <Text style={[styles.rowLabel, { color: "#e05252" }]}>Sign out</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.row, { paddingVertical: 14 }]}
+                  onPress={() => { setLoginOpen(true); setLoginEmail(""); setLoginPassword(""); }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.rowIcon}>
+                    <SymbolIcon name="person.crop.circle.badge.plus" fallbackIonicon="person-add" size={20} color="#e8c078" />
+                  </View>
+                  <View style={styles.rowTextWrap}>
+                    <Text style={[styles.rowLabel, styles.rowLabelSelected]}>Sign in to Quran.com</Text>
+                    <Text style={styles.rowSubLabel}>Sync bookmarks across devices</Text>
+                  </View>
+                  <SymbolIcon name="chevron.right" fallbackIonicon="chevron-forward" size={14} color="#555" />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={{ height: 32 }} />
           </ScrollView>
+
+          {/* Sign-in form — slides in over the sheet */}
+          {loginOpen && (
+            <View style={[StyleSheet.absoluteFill, styles.loginOverlay]}>
+              <View style={styles.loginHeader}>
+                <TouchableOpacity onPress={() => setLoginOpen(false)} hitSlop={12} activeOpacity={0.7} style={styles.loginBackBtn}>
+                  <SymbolIcon name="chevron.left" fallbackIonicon="chevron-back" size={18} color="#a3a3a3" weight="semibold" />
+                  <Text style={styles.loginBackLabel}>Back</Text>
+                </TouchableOpacity>
+                <Text style={styles.loginTitle}>Sign in</Text>
+                <View style={styles.loginBackBtn} pointerEvents="none" />
+              </View>
+              <View style={styles.loginBody}>
+                <Text style={styles.loginFieldLabel}>Email</Text>
+                <TextInput
+                  style={styles.loginInput}
+                  value={loginEmail}
+                  onChangeText={setLoginEmail}
+                  placeholder="you@example.com"
+                  placeholderTextColor="#555"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardAppearance="dark"
+                />
+                <Text style={[styles.loginFieldLabel, { marginTop: 16 }]}>Password</Text>
+                <TextInput
+                  style={styles.loginInput}
+                  value={loginPassword}
+                  onChangeText={setLoginPassword}
+                  placeholder="••••••••"
+                  placeholderTextColor="#555"
+                  secureTextEntry
+                  keyboardAppearance="dark"
+                />
+                {qfAuth.error && (
+                  <Text style={styles.loginError}>{qfAuth.error}</Text>
+                )}
+                <TouchableOpacity
+                  style={[styles.loginBtn, (qfAuth.signingIn || !loginEmail || !loginPassword) && styles.loginBtnDisabled]}
+                  activeOpacity={0.8}
+                  disabled={qfAuth.signingIn || !loginEmail || !loginPassword}
+                  onPress={() => {
+                    qfAuth.signIn(loginEmail, loginPassword);
+                  }}
+                >
+                  {qfAuth.signingIn
+                    ? <ActivityIndicator color="#1c1c1e" />
+                    : <Text style={styles.loginBtnText}>Sign in</Text>
+                  }
+                </TouchableOpacity>
+                <Text style={styles.loginHint}>
+                  Use your Quran.com account credentials.
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Translation sub-screen — slides in over the sheet content, inside the panel so absoluteFill maps to the panel bounds */}
           <TranslationPicker
@@ -1197,5 +1313,86 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 1 },
     elevation: 2,
+  },
+  loginOverlay: {
+    backgroundColor: "#1c1c1e",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: "hidden",
+  },
+  loginHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.1)",
+  },
+  loginTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#f5f5f5",
+    letterSpacing: -0.2,
+  },
+  loginBackBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: 72,
+    paddingVertical: 4,
+  },
+  loginBackLabel: {
+    fontSize: 17,
+    color: "#a3a3a3",
+    marginLeft: 2,
+  },
+  loginBody: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+  },
+  loginFieldLabel: {
+    fontSize: 13,
+    color: "#8e8e93",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  loginInput: {
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#f5f5f5",
+  },
+  loginError: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#e05252",
+    textAlign: "center",
+  },
+  loginBtn: {
+    marginTop: 24,
+    backgroundColor: "#e8c078",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loginBtnDisabled: {
+    opacity: 0.45,
+  },
+  loginBtnText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1c1c1e",
+  },
+  loginHint: {
+    marginTop: 16,
+    fontSize: 13,
+    color: "#555",
+    textAlign: "center",
   },
 });

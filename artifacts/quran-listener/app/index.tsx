@@ -64,6 +64,7 @@ import {
 } from "@/lib/useSettings";
 import { useRecentSurahs } from "@/lib/useRecentSurahs";
 import { useBookmarks } from "@/lib/useBookmarks";
+import { useQFAuth } from "@/lib/useQFAuth";
 import { useQFTranslation } from "@/lib/useQFTranslation";
 import { useQFAudio } from "@/lib/useQFAudio";
 
@@ -103,7 +104,8 @@ export default function PlayerScreen() {
   } = useSettings();
   const arabicFontFamily = getArabicFont(settings.arabicFont).family;
   const { recentSurahs, recordSurah } = useRecentSurahs();
-  const { bookmarks, isBookmarked, toggleBookmark } = useBookmarks();
+  const qfAuth = useQFAuth();
+  const { bookmarks, isBookmarked, toggleBookmark } = useBookmarks(qfAuth.token);
 
   // Quran Foundation API — translation (fetched per chapter + translation choice).
   const { translations: qfTranslations } = useQFTranslation(
@@ -859,9 +861,10 @@ export default function PlayerScreen() {
       },
     );
 
-    // Pre-create the next player so it can buffer ahead.
-    if (index < ayahs.length - 1) {
-      getPlayer(index + 1);
+    // Pre-create the next 3 players so they can buffer ahead while the
+    // current ayah plays. Short ayahs (< 3 s) need at least 2 queued.
+    for (let ahead = 1; ahead <= 3; ahead++) {
+      if (index + ahead < ayahs.length) getPlayer(index + ahead);
     }
 
     // ---------------------------------------------------------------
@@ -1893,6 +1896,7 @@ export default function PlayerScreen() {
         showTranslation={settings.showTranslation}
         onTranslationIdChange={setTranslationId}
         onShowTranslationChange={setShowTranslation}
+        qfAuth={qfAuth}
         onOpenCustomBgEditor={() => {
           // Signal that we want the editor to open, then start closing settings.
           // onFullyClosed (below) will actually open it once the modal is gone.
